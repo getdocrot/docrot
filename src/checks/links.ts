@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import GithubSlugger from 'github-slugger';
-import type { DocFile, Finding } from '../types.js';
+import { levenshtein } from './pkgrefs.js';
+import type { DocFile, Finding, FindingFix } from '../types.js';
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const MD_RE = /\.(md|mdx|markdown)$/i;
@@ -39,25 +40,55 @@ function fuzzySlug(text: string): string {
 interface AnchorIndex {
   exact: Set<string>;
   fuzzy: Set<string>;
+  slugs: string[];
 }
 
 function anchorSetOf(doc: DocFile, cache: Map<string, AnchorIndex>): AnchorIndex {
   let index = cache.get(doc.relPath);
   if (index) return index;
-  index = { exact: new Set(), fuzzy: new Set() };
+  index = { exact: new Set(), fuzzy: new Set(), slugs: [] };
   const slugger = new GithubSlugger();
   for (const heading of doc.headings) {
     const slug = slugger.slug(heading);
     index.exact.add(slug);
     index.fuzzy.add(fuzzySlug(slug));
+    index.slugs.push(slug);
   }
   for (const anchor of doc.htmlAnchors) {
     index.exact.add(anchor);
     index.exact.add(anchor.toLowerCase());
     index.fuzzy.add(fuzzySlug(anchor));
+    index.slugs.push(anchor);
   }
   cache.set(doc.relPath, index);
   return index;
+}
+
+/** Unambiguous repair target for a dead anchor, or null. */
+function bestAnchor(fragment: string, index: AnchorIndex): string | null {
+  const wanted = fuzzySlug(fragment);
+  const fuzzyHits = index.slugs.filter((s) => fuzzySlug(s) === wanted);
+  if (fuzzyHits.length === 1) return fuzzyHits[0];
+  if (fuzzyHits.length > 1) return null;
+  // Only slug ⊇ fragment counts: a long fragment "containing" some generic
+  // short slug (#dispatcher, #errors) is a coincidence, not a repair target.
+  const substrHits =
+    fragment.length >= 4 ? index.slugs.filter((s) => s.includes(fragment)) : [];
+  if (substrHits.length === 1) return substrHits[0];
+  if (substrHits.length > 1) return null;
+  const ranked = index.slugs
+    .map((s) => ({ s, d: levenshtein(s, fragment) }))
+    .filter((x) => x.d <= 3)
+    .sort((a, b) => a.d - b.d);
+  if (ranked.length === 1 || (ranked.length > 1 && ranked[0].d < ranked[1].d)) return ranked[0].s;
+  return null;
+}
+
+function anchorFix(refUrl: string, best: string | null): FindingFix | undefined {
+  if (!best) return undefined;
+  const hash = refUrl.indexOf('#');
+  if (hash === -1) return undefined;
+  return { search: refUrl.slice(hash), replace: `#${best}` };
 }
 
 function anchorMissing(index: AnchorIndex, fragment: string): boolean {
@@ -111,6 +142,7 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
             severity: 'warning',
             check: 'missing-anchor',
             message: `anchor \`#${fragment}\` not found in this file`,
+            fix: anchorFix(ref.url, bestAnchor(fragment, anchors)),
           });
         }
         continue;
@@ -165,12 +197,15 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
         continue;
       }
       if (siteStyle) {
+        const rel = path.relative(path.dirname(doc.path), abs).split(path.sep).join('/');
+        const rawFragment = ref.url.includes('#') ? ref.url.slice(ref.url.indexOf('#')) : '';
         findings.push({
           file: doc.relPath,
           line: ref.line,
           severity: 'warning',
           check: 'broken-link',
           message: `link \`${ref.url}\` only resolves from the docs root — works on the site, 404s on GitHub`,
+          fix: { search: ref.url, replace: `${rel.startsWith('.') ? rel : './' + rel}${rawFragment}` },
         });
         // still verify the fragment against the file it lands on
       }
@@ -187,6 +222,7 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
               severity: 'warning',
               check: 'missing-anchor',
               message: `anchor \`#${fragment}\` not found in \`${relTarget}\``,
+              fix: anchorFix(ref.url, bestAnchor(fragment, anchors)),
             });
           }
         }

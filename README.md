@@ -93,6 +93,8 @@ npx docrot-cli --reporter=github --fail-on=error
 ```text
 docrot [path] [options]
 
+--fix                             repair mechanical rot (see below)
+--dry-run                         with --fix: show changes without writing
 --reporter <pretty|github|json>   output format (default: pretty)
 --fail-on <error|warning|never>   exit non-zero threshold (default: error)
 --only <checks>                   comma list of: examples,links,pkg
@@ -100,6 +102,22 @@ docrot [path] [options]
 --include-changelogs              also scan CHANGELOG-style files
 -v, --verbose                     show informational notes
 ```
+
+### Fixing
+
+docrot repairs the mechanical rot itself:
+
+```bash
+npx docrot-cli --fix            # apply high-confidence fixes
+npx docrot-cli --fix --dry-run  # preview without writing
+```
+
+What it fixes: dead anchors (rewritten to the single unambiguous nearest heading),
+lookalike script/install/bin names (`npm run build-wasm` → `build:wasm`), docs-root
+style links, and missing commas in examples — a comma is only inserted where it
+provably makes the whole block parse. After fixing, docrot re-scans: any file that
+somehow scans worse is reverted automatically. Conservative by design; the long
+tail stays human.
 
 ### Ignoring a block
 
@@ -139,8 +157,9 @@ docrot resolves your package's real entry point (exports map → types → sourc
 ## Roadmap
 
 - Python / Go / Rust example verification
-- `--fix`: AI-assisted rewrite of rotten examples (bring your own key)
+- `--fix` for the long tail: AI-assisted rewrites (bring your own key)
 - Execution mode: actually run examples in a sandbox
+- MCP server, so your coding agent can call docrot directly
 - `llms.txt` verification — keep your AI-facing docs honest too
 - Verified-docs badge service
 - Semantic checks: does `client.users.list()` exist on the type?

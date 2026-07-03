@@ -13,7 +13,7 @@ const RUN_CAPABLE = new Set(['npm', 'pnpm', 'yarn', 'bun']);
 const DLX = new Set(['npx', 'bunx']);
 const PKG_NAME_RE = /^(@[a-z0-9-~][\w.-]*\/)?[a-z0-9-~][\w.-]*$/i;
 
-function levenshtein(a: string, b: string): number {
+export function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const dp = Array.from({ length: a.length + 1 }, (_, i) => i);
   for (let j = 1; j <= b.length; j++) {
@@ -140,6 +140,12 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
           const authoritative = /^(readme|contributing|development|setup)/i.test(
             path.basename(block.file),
           );
+          const near = [...scriptsInScope(block.file, project)]
+            .filter((s) => levenshtein(s, script) <= 2)
+            .sort((a, b) => levenshtein(a, script) - levenshtein(b, script));
+          const unambiguous =
+            near.length === 1 ||
+            (near.length > 1 && levenshtein(near[0], script) < levenshtein(near[1], script));
           findings.push({
             file: block.file,
             line,
@@ -148,6 +154,7 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
             message: `package.json has no \`${script}\` script (docs say \`${cmd} run ${script}\`)`,
             snippet: tokens.join(' '),
             blockId,
+            fix: near.length && unambiguous ? { search: script, replace: near[0] } : undefined,
           });
         }
       }
@@ -171,6 +178,7 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
               message: `docs install \`${arg}\` but this package is \`${project.name}\``,
               snippet: tokens.join(' '),
               blockId,
+              fix: { search: arg, replace: project.name },
             });
           }
         }
@@ -194,15 +202,19 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
           !looksLikeOurs(target, project) &&
           similarBin
         ) {
-          const bins = [...project.binNames].join('`, `');
+          const binList = [...project.binNames];
+          const nearBin = binList
+            .filter((b) => levenshtein(b, target) <= 2)
+            .sort((a, b) => levenshtein(a, target) - levenshtein(b, target));
           findings.push({
             file: block.file,
             line,
             severity: 'warning',
             check: 'unknown-bin',
-            message: `docs run \`${cmd} ${target}\` but this package's bin is \`${bins}\``,
+            message: `docs run \`${cmd} ${target}\` but this package's bin is \`${binList.join('`, `')}\``,
             snippet: tokens.join(' '),
             blockId,
+            fix: nearBin.length === 1 ? { search: target, replace: nearBin[0] } : undefined,
           });
         }
       }

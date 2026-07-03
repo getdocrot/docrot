@@ -60,6 +60,18 @@ export function parseDoc(absPath: string, relPath: string, content: string): Doc
   }
 
   const rawLines = content.split('\n');
+  // Which raw lines are prose (not inside a code fence)? Context hints must
+  // never absorb a neighboring block's code.
+  const isProse: boolean[] = [];
+  let fenceOpen = false;
+  for (const raw of rawLines) {
+    if (/^\s*(```|~~~)/.test(raw)) {
+      isProse.push(false);
+      fenceOpen = !fenceOpen;
+    } else {
+      isProse.push(!fenceOpen);
+    }
+  }
   let ignoreUntilLine = -1;
 
   visit(tree, (node) => {
@@ -86,7 +98,7 @@ export function parseDoc(absPath: string, relPath: string, content: string): Doc
           skipped,
           contextHint: rawLines
             .slice(Math.max(0, line - 9), line - 1)
-            .filter((l) => l.trim())
+            .filter((l, i) => l.trim() && isProse[Math.max(0, line - 9) + i])
             .slice(-4)
             .join(' '),
         };

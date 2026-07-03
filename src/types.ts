@@ -25,6 +25,14 @@ export interface Finding {
   snippet?: string;
   /** `${file}:${fenceLine}` when the finding belongs to a fenced code block. */
   blockId?: string;
+  /** High-confidence mechanical repair, applied by --fix. */
+  fix?: FindingFix;
+}
+
+export interface FindingFix {
+  /** Exact text to replace on the finding's line. */
+  search: string;
+  replace: string;
 }
 
 export type NormLang =

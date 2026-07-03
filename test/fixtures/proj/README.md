@@ -12,6 +12,7 @@ npm run build
 ```bash
 npm install fixture-pk
 npm run deploy
+npm run biuld
 npx fixtur
 ```
 
@@ -57,6 +58,15 @@ The next block is mangled:
 
 ```js
 function broken( {
+```
+
+This one just forgot its commas:
+
+```js
+const cfg = {
+  a: 1
+  b: 2
+};
 ```
 
 ## Partial
@@ -211,6 +221,7 @@ this is (definitely not valid
 - [missing page](./docs/nope.md)
 - [anchor ok](./docs/guide.md#getting-started)
 - [anchor bad](./docs/guide.md#instalation)
+- [anchor typo](./docs/guide.md#getting-startd)
 - [self anchor](#usage)
 
 ![logo](./img/logo.png)

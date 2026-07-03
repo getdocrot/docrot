@@ -4,7 +4,7 @@ import { outputReason, partialReason, tooTrivial } from '../placeholders.js';
 import type { CodeBlock, Finding } from '../types.js';
 
 // Diagnostics that fire on perfectly reasonable documentation fragments.
-const SNIPPET_FRIENDLY_CODES = new Set([
+export const SNIPPET_FRIENDLY_CODES = new Set([
   1108, // 'return' outside a function
   1308, // 'await' outside an async function
   1375, // top-level 'await' needs module config

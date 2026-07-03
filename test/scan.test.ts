@@ -52,7 +52,7 @@ describe('example verification', () => {
 
   it('accepts fluent chains, spec notation, html comments and alternatives', () => {
     const syntaxErrors = result.findings.filter((f) => f.check === 'syntax' && f.severity === 'error');
-    expect(syntaxErrors).toHaveLength(1); // only `function broken( {`
+    expect(syntaxErrors).toHaveLength(2); // `function broken( {` and the missing-comma block
   });
 
   it('accepts jsonc conventions inside json blocks', () => {
@@ -84,7 +84,9 @@ describe('package refs', () => {
 
   it('accepts scripts that exist and skips usage placeholders', () => {
     const missing = result.findings.filter((f) => f.check === 'missing-script');
-    expect(missing).toHaveLength(1); // only `deploy`
+    expect(missing).toHaveLength(2); // `deploy` (unfixable) and `biuld` (fixable)
+    const fixable = missing.find((f) => f.message.includes('biuld'));
+    expect(fixable?.fix).toEqual({ search: 'biuld', replace: 'build' });
   });
 
   it('warns on lookalike install names', () => {

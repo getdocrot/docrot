@@ -65,4 +65,6 @@ export async function scan(rootInput: string, options: ScanOptions = {}): Promis
 }
 
 export { healthGrade, renderGitHub, renderJson, renderTerminal, summaryLine } from './report.js';
+export { applyFixes } from './fix.js';
+export type { AppliedFix, FixOutcome } from './fix.js';
 export * from './types.js';
