@@ -1,0 +1,27 @@
+name: 'docrot'
+description: 'Fail CI when your docs lie — verifies code examples, imports, links and anchors in your markdown against your real code.'
+author: 'The DocRot Authors'
+branding:
+  icon: 'file-text'
+  color: 'red'
+
+inputs:
+  path:
+    description: 'Directory to scan'
+    required: false
+    default: '.'
+  fail-on:
+    description: 'Exit non-zero threshold: error | warning | never'
+    required: false
+    default: 'error'
+  version:
+    description: 'docrot version to run'
+    required: false
+    default: 'latest'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run docrot
+      shell: bash
+      run: npx --yes docrot@${{ inputs.version }} "${{ inputs.path }}" --reporter=github --fail-on="${{ inputs.fail-on }}"

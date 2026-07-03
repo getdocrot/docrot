@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="740" height="430" viewBox="0 0 740 430" role="img" aria-label="docrot terminal output scanning axios: broken examples and a dead link found">
+  <defs>
+    <style>
+      .t { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 12.5px; fill: #c9d1d9; white-space: pre; }
+      .dim { fill: #8b949e; }
+      .red { fill: #f85149; }
+      .yel { fill: #d29922; }
+      .grn { fill: #3fb950; }
+      .wht { fill: #e6edf3; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="740" height="430" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <rect width="740" height="36" rx="10" fill="#161b22"/>
+  <rect y="26" width="740" height="10" fill="#161b22"/>
+  <circle cx="22" cy="18" r="6" fill="#ff5f57"/>
+  <circle cx="42" cy="18" r="6" fill="#febc2e"/>
+  <circle cx="62" cy="18" r="6" fill="#28c840"/>
+  <text x="370" y="22" text-anchor="middle" class="t dim">docrot — axios</text>
+
+  <text x="24" y="64" class="t"><tspan class="grn">$</tspan> <tspan class="wht">npx docrot</tspan></text>
+  <text x="24" y="85" class="t dim">docrot v0.1.0 — scanning ~/oss/axios</text>
+
+  <text x="24" y="122" class="t wht">docs/pages/advanced/request-config.md</text>
+  <text x="24" y="143" class="t">  <tspan class="red">✖</tspan> <tspan class="dim"> 461  [syntax]</tspan> '=&gt;' expected.</text>
+  <text x="24" y="164" class="t dim">          › serialize?: (params: Record&lt;string, any&gt;, options?: ParamsSerializerOptions ),</text>
+  <text x="24" y="185" class="t">  <tspan class="red">✖</tspan> <tspan class="dim"> 552  [syntax]</tspan> ',' expected.</text>
+  <text x="24" y="206" class="t dim">          › visitor: (value, key, path, helpers) =&gt; {};</text>
+
+  <text x="24" y="243" class="t wht">README.md</text>
+  <text x="24" y="264" class="t">  <tspan class="red">✖</tspan> <tspan class="dim">1419  [broken-link]</tspan> `./test/specs/interceptors.spec.js` does not exist</text>
+
+  <text x="24" y="301" class="t dim">──────────────────────────────────────────────────────────────────────</text>
+  <text x="24" y="322" class="t"> 156 markdown files · 1058 code blocks · <tspan class="grn">✔ 959 verified</tspan> · <tspan class="dim">◌ 1 skipped</tspan> · <tspan class="red">✖ 5 broken</tspan></text>
+  <text x="24" y="343" class="t"> <tspan class="red">15 errors</tspan> · <tspan class="yel">5 warnings</tspan> <tspan class="dim">· 3.5s</tspan></text>
+
+  <text x="24" y="384" class="t"> Docs health: <tspan class="grn" font-weight="700">A+</tspan></text>
+  <text x="24" y="410" class="t dim"> (even great docs rot — axios still grades A+; the broken bits are now findable)</text>
+</svg>
