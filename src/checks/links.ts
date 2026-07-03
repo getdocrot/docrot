@@ -121,13 +121,36 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
       if (url.startsWith('/') || isTemplateToken(url)) continue;
 
       const base = path.resolve(path.dirname(doc.path), url);
-      const hasExt = /\.[^./\\]+$/.test(url);
+      // `migrating-to-1.0.0` has no extension — numbers don't count.
+      const hasExt = /\.[a-z][a-z0-9]*$/i.test(url);
       // Docs-site links routinely drop the .md extension; accept the file the
       // route points at before declaring the link dead.
-      const candidates = hasExt
-        ? [base]
-        : [base, `${base}.md`, `${base}.mdx`, `${base}.html`, path.join(base, 'index.md')];
-      const abs = candidates.find((c) => fs.existsSync(c));
+      const withRoutes = (b: string): string[] =>
+        hasExt ? [b] : [b, `${b}.md`, `${b}.mdx`, `${b}.html`, path.join(b, 'index.md')];
+      let abs = withRoutes(base).find((c) => fs.existsSync(c));
+      let siteStyle = false;
+
+      if (!abs) {
+        // Docs-site trees write links relative to the site root, not the
+        // file. Retry against the repo root and the nearest docs/ ancestor —
+        // a hit means the link works on the site but not on GitHub.
+        const roots = [root];
+        let dir = path.dirname(doc.path);
+        while (dir.startsWith(root) && dir !== root) {
+          if (/^docs?$/i.test(path.basename(dir)) || /(^|\/)docs?\//.test(path.relative(root, dir) + '/')) {
+            roots.push(dir);
+          }
+          dir = path.dirname(dir);
+        }
+        for (const r of roots) {
+          const retry = withRoutes(path.resolve(r, url.replace(/^\.\//, ''))).find((c) => fs.existsSync(c));
+          if (retry) {
+            abs = retry;
+            siteStyle = true;
+            break;
+          }
+        }
+      }
 
       if (!abs) {
         findings.push({
@@ -140,6 +163,16 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
             : `relative link \`${ref.url}\` matches no file or .md/.html route`,
         });
         continue;
+      }
+      if (siteStyle) {
+        findings.push({
+          file: doc.relPath,
+          line: ref.line,
+          severity: 'warning',
+          check: 'broken-link',
+          message: `link \`${ref.url}\` only resolves from the docs root — works on the site, 404s on GitHub`,
+        });
+        // still verify the fragment against the file it lands on
       }
 
       if (fragment && !skippableFragment(fragment) && MD_RE.test(abs)) {

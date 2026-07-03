@@ -51,7 +51,9 @@ import express from 'express';
 const answer: number = 42;
 ```
 
-## Broken
+## Regression
+
+The next block is mangled:
 
 ```js
 function broken( {
@@ -97,6 +99,105 @@ const result = lib.parse(pattern[, options]);
 
 ```bash
 npm run <command> -- --flag
+cd elsewhere && npm run sitedev
+```
+
+```js
+interface Identifier <: Expression, Pattern {
+  type: "Identifier";
+  name: string;
+}
+enum Kind { "var" | "let" }
+```
+
+```js
+a// 1
+/* 2 */
+ + <!-- 3
+-->
+2;
+```
+
+```js
+{ foo: 1 }
+
+// or
+{ 'foo': 1 }
+```
+
+```json
+{
+  // jsonc comment
+  "list": [1, 2,],
+}
+```
+
+Examples of **incorrect** code for this rule:
+
+```js
+const broken = = 2;
+```
+
+```js
+.
+├── one/
+└── file.js
+```
+
+```js
+"this string is invalid: \u"
+```
+
+```js
+node file.js
+zx build.mjs
+```
+
+```js
+headers.get('Abc') =>            headers.get('Abc')
+'string'                         'string'
+res.body                         res.body.pipe(x)
+```
+
+```js
+const style: $Exact<CSS.Properties<*>> = {
+  [('--theme-color': any)]: 'black',
+};
+```
+
+```js
+e + b = (k1 & 0xffff) * (c1 & 0xffff)
+e + b = k1 * (c1 & 0xffff)
+```
+
+```js
+// zx
+zx file.js
+
+// or node
+node file.js
+```
+
+```js
+  '.a',
+  '.b',
+```
+
+```js
+connect(req, opts) {
+  return net.connect(opts);
+}
+});
+```
+
+```json
+{ "version": 3 }
+
+{ "version": 4 }
+```
+
+```js
+"before": "always" or "never"
 ```
 
 <!-- docrot-ignore -->

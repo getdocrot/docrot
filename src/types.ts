@@ -50,6 +50,8 @@ export interface CodeBlock {
   contentStartLine: number;
   /** Reason this block is excluded from verification, or null. */
   skipped: string | null;
+  /** Prose immediately above the fence — consulted only when a block fails. */
+  contextHint?: string;
 }
 
 export interface LinkRef {

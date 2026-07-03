@@ -50,9 +50,20 @@ describe('example verification', () => {
     expect(partial?.skipped).toBeTruthy();
   });
 
-  it('accepts fluent chains and skips ellipsis fragments', () => {
+  it('accepts fluent chains, spec notation, html comments and alternatives', () => {
     const syntaxErrors = result.findings.filter((f) => f.check === 'syntax' && f.severity === 'error');
     expect(syntaxErrors).toHaveLength(1); // only `function broken( {`
+  });
+
+  it('accepts jsonc conventions inside json blocks', () => {
+    expect(result.findings.some((f) => f.check === 'data' && f.message.includes('jsonc'))).toBe(false);
+    const dataErrors = result.findings.filter((f) => f.check === 'data' && f.severity === 'error');
+    expect(dataErrors).toHaveLength(2); // the deliberately invalid JSON + YAML only
+  });
+
+  it('skips intentionally incorrect examples via context', () => {
+    const block = result.files.flatMap((f) => f.blocks).find((b) => b.value.includes('= = 2'));
+    expect(block?.skipped).toBe('intentionally incorrect example');
   });
 
   it('skips docrot-ignore blocks', () => {

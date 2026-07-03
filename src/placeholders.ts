@@ -15,10 +15,14 @@ export function partialReason(code: string): string | null {
   if (/[([{,]\s*\.{3}\s*[)\]},]/.test(code)) return 'partial example (`...`)';
   if (/(^|[\s(])\.{3}\s*$/m.test(code)) return 'partial example (`...`)'; // `try ...`
   if (/=\s*\.{3}\s*(\/\/|;|,|\)|$)/m.test(code)) return 'partial example (`= ...`)';
+  if (/=\s*\.\.\s*(\/\/|;|,|$)/m.test(code)) return 'partial example (`= ..`)';
   if (/\(\s*[\w.$'"]+\[,\s*[\w.$\s]+\]/.test(code)) return 'signature notation (`fn(a[, b])`)';
   if (UPPER_PLACEHOLDER_RE.test(code)) return 'placeholder values';
   if (WORDY_PLACEHOLDER_RE.test(code)) return 'placeholder values';
   if (MUSTACHE_RE.test(code)) return 'template placeholders';
+  // `[<enabled>, {...}]`-style option placeholders (only consulted on failure,
+  // so generics/JSX in valid code never reach this).
+  if (/[[(,:]\s*<[a-z][a-z0-9_-]{2,}>/.test(code)) return 'placeholder values';
   if (SNIP_COMMENT_RE.test(code)) return 'partial example (snipped)';
   return null;
 }

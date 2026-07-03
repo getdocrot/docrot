@@ -59,6 +59,7 @@ export function parseDoc(absPath: string, relPath: string, content: string): Doc
     return doc;
   }
 
+  const rawLines = content.split('\n');
   let ignoreUntilLine = -1;
 
   visit(tree, (node) => {
@@ -83,6 +84,11 @@ export function parseDoc(absPath: string, relPath: string, content: string): Doc
           fenceLine: line,
           contentStartLine: line + 1,
           skipped,
+          contextHint: rawLines
+            .slice(Math.max(0, line - 9), line - 1)
+            .filter((l) => l.trim())
+            .slice(-4)
+            .join(' '),
         };
         doc.blocks.push(block);
         break;

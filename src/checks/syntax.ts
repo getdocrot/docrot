@@ -17,6 +17,43 @@ function blockIdOf(block: CodeBlock): string {
   return `${block.file}:${block.fenceLine}`;
 }
 
+// Rule docs deliberately show broken code ("examples of incorrect code…").
+// Only consulted after a block has already failed every parse shape.
+const INTENTIONALLY_BROKEN_RE =
+  /\b(incorrect|invalid|wrong|bad|avoid|don'?t|deprecated|broken|will (?:error|fail|throw)|fails?)\b|:::\s*incorrect/i;
+
+/** Remove JSONC comments and trailing commas without touching strings. */
+function stripJsonc(code: string): string {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+    if (inString) {
+      out += ch;
+      if (ch === '\\') {
+        out += code[++i] ?? '';
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+    } else if (ch === '/' && code[i + 1] === '/') {
+      while (i < code.length && code[i] !== '\n') i++;
+      out += '\n';
+    } else if (ch === '/' && code[i + 1] === '*') {
+      i += 2;
+      while (i < code.length && !(code[i] === '*' && code[i + 1] === '/')) i++;
+      i++;
+    } else {
+      out += ch;
+    }
+  }
+  return out.replace(/,(\s*[}\]])/g, '$1');
+}
+
 function fileNameFor(block: CodeBlock): string {
   switch (block.norm) {
     case 'ts':
@@ -63,6 +100,10 @@ function parsesAsFragment(code: string): boolean {
     // brace-less property lists: `input: 'x',\nstart: 3,`
     `({\n${code}\n})`,
     `declare class __DocRotFragment {\n${code}\n}`,
+    // methods with bodies (object/class excerpts)
+    `class __DocRotFragment {\n${code}\n}`,
+    // array item listings: `'.a',\n'.b',`
+    `[\n${code}\n]`,
     `type __DocRotFragment = {\n${code}\n};`,
     // hook/callback docs quote bare function types: `(a: A) => void`
     `type __DocRotFragment = (\n${code.replace(/;\s*$/, '')}\n);`,
@@ -74,15 +115,59 @@ function parsesAsFragment(code: string): boolean {
   ];
   if (shapes.some(parses)) return true;
 
-  // Walkthrough docs quote regions that begin or end mid-block: strip
-  // leading/trailing close-brace lines and try the loop/switch shapes again.
-  const deblocked = code
-    .replace(/^(\s*[}\])]+;?,?\s*\n)+/, '')
-    .replace(/(\n\s*[}\])]+;?,?\s*)+$/, '');
-  if (deblocked !== code && deblocked.trim()) {
-    if (parses(deblocked)) return true;
-    if (parses(`function __docrot() { while (1) {\n${deblocked}\n} }`)) return true;
-    if (parses(`switch (__docrot) {\n${deblocked}\n}`)) return true;
+  // ESTree-style spec notation (babel, estree docs):
+  // `interface X <: Y {` and `enum K { "a" | "b" }`
+  if (/^\s*interface\s+[\w$]+\s*<:/m.test(code) || /^\s*(extend\s+)?enum\s+[\w$]+\s*\{\s*"/m.test(code)) {
+    const specced = code
+      .replace(/<:/g, 'extends')
+      .replace(/\benum\s+([\w$]+)\s*\{([^}]*)\}/g, 'type $1 = $2;');
+    if (parses(`declare module "__docrot__" {\n${specced}\n}`)) return true;
+  }
+
+  // Annex-B HTML-like comments are valid script-mode JS; the TS module
+  // parser rejects them, so strip and retry.
+  if (/<!--|-->/.test(code)) {
+    const stripped = code.replace(/<!--[^\n]*/g, '').replace(/^\s*-->[^\n]*/gm, '');
+    if (parses(stripped)) return true;
+  }
+
+  // Alternatives listing: several standalone snippets in one fence,
+  // separated by blank or comment-only lines. Valid iff every chunk is.
+  const chunks: string[] = [];
+  let current: string[] = [];
+  for (const line of code.split('\n')) {
+    if (/^\s*$/.test(line) || /^\s*\/\/.*$/.test(line) || /^\s*\/\*.*\*\/\s*$/.test(line)) {
+      if (current.length) chunks.push(current.join('\n'));
+      current = [];
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.length) chunks.push(current.join('\n'));
+  if (chunks.length >= 2 && chunks.length <= 12) {
+    if (chunks.every((c) => parses(c) || parses(`(\n${c}\n)`))) return true;
+  }
+
+  // Walkthrough docs quote regions that begin or end mid-block. Peel
+  // orphan closer lines from either end progressively — stripping them all
+  // at once eats legitimate braces too.
+  const allLines = code.split('\n');
+  const isCloser = (l: string | undefined): boolean => l !== undefined && /^\s*[}\])]+[;,]?\s*$/.test(l);
+  let maxLead = 0;
+  while (maxLead < 3 && isCloser(allLines[maxLead])) maxLead++;
+  let maxTrail = 0;
+  while (maxTrail < 3 && isCloser(allLines[allLines.length - 1 - maxTrail])) maxTrail++;
+  for (let lead = 0; lead <= maxLead; lead++) {
+    for (let trail = 0; trail <= maxTrail; trail++) {
+      if (lead === 0 && trail === 0) continue;
+      const inner = allLines.slice(lead, allLines.length - trail).join('\n');
+      if (!inner.trim()) continue;
+      if (parses(inner)) return true;
+      if (parses(`function __docrot() { while (1) {\n${inner}\n} }`)) return true;
+      if (parses(`switch (__docrot) {\n${inner}\n}`)) return true;
+      if (parses(`class __DocRotFragment {\n${inner}\n}`)) return true;
+      if (parses(`({\n${inner}\n})`)) return true;
+    }
   }
 
   // A statement (usually console.log) followed by its pasted output object.
@@ -139,9 +224,50 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
     try {
       JSON.parse(code);
     } catch (err) {
+      // Docs' json blocks are JSONC by community convention (comments,
+      // trailing commas) and often show fragments without the outer braces.
+      const cleaned = stripJsonc(code);
+      for (const candidate of [cleaned, `{${code}}`, `{${cleaned}}`]) {
+        try {
+          JSON.parse(candidate);
+          return findings;
+        } catch {
+          // keep trying
+        }
+      }
+      // Several JSON documents pasted in one fence, separated by blank lines.
+      const jsonChunks = code.split(/\n\s*\n+/).filter((c) => c.trim());
+      if (
+        jsonChunks.length >= 2 &&
+        jsonChunks.length <= 8 &&
+        jsonChunks.every((c) => {
+          try {
+            JSON.parse(stripJsonc(c));
+            return true;
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        return findings;
+      }
+      // Rule docs show `rule-name: ["error", ...]` fragments in json fences;
+      // they read as YAML, which is what the authors meant. Only for blocks
+      // shaped like key: value — brace soup must not sneak through.
+      if (/^[ \t]*[\w"'@$-]+\s*:/m.test(code) && !/^\s*[{[]/.test(code)) {
+        try {
+          if (parseAllDocuments(code).every((doc) => doc.errors.length === 0)) return findings;
+        } catch {
+          // not yaml-ish either
+        }
+      }
       const reason = partialReason(code);
       if (reason) {
         block.skipped = reason;
+        return findings;
+      }
+      if (block.contextHint && INTENTIONALLY_BROKEN_RE.test(block.contextHint)) {
+        block.skipped = 'intentionally incorrect example';
         return findings;
       }
       findings.push({
@@ -223,6 +349,62 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
     const reason = partialReason(code);
     if (reason) {
       block.skipped = reason;
+      return findings;
+    }
+    if (block.contextHint && INTENTIONALLY_BROKEN_RE.test(block.contextHint)) {
+      block.skipped = 'intentionally incorrect example';
+      return findings;
+    }
+    // Tokenizer/linter docs demonstrate invalid input and say so in the code.
+    // Narrower than the prose guard: identifiers named `broken`/`bad` are
+    // everywhere, but nobody writes the word "invalid" in working examples.
+    if (/\b(invalid|incorrect)\b/i.test(code)) {
+      block.skipped = 'demonstrates invalid code';
+      return findings;
+    }
+    // Directory-tree diagrams get fenced as js often enough to matter.
+    if (/[├└┌┬┴│]/.test(code)) {
+      block.skipped = 'diagram, not code';
+      return findings;
+    }
+    // Human alternatives notation: `"before": "always" or "never"`
+    if (/(['"])(?:(?!\1).)*\1\s+or\s+['"]/.test(code)) {
+      block.skipped = 'alternatives notation (`"a" or "b"`)';
+      return findings;
+    }
+    // Flow type syntax is not TypeScript, but it isn't rot either.
+    if (/<\*>|@flow\b/.test(code)) {
+      block.skipped = 'Flow type syntax';
+      return findings;
+    }
+    // Math derivations: `e + b = (k1 & 0xffff) * c1`
+    if (/^\s*[\w$]+\s*[+*&|^-]\s*[\w$]+\s*=[^=]/m.test(code)) {
+      block.skipped = 'math notation, not code';
+      return findings;
+    }
+    // Raw HTTP multipart payloads pasted into a code fence.
+    if (/^-{10,}\d{4,}/m.test(code)) {
+      block.skipped = 'protocol output, not code';
+      return findings;
+    }
+    // Terminal commands in a js fence: `node file.js`, `zx script.mjs`…
+    const cmdLines = code
+      .split('\n')
+      .filter((l) => l.trim() && !/^\s*\/\//.test(l));
+    if (
+      cmdLines.length > 0 &&
+      cmdLines.length <= 4 &&
+      cmdLines.every((l) =>
+        /^(node|npm|npx|yarn|pnpm|bun|bunx|deno|zx|git|sh|bash|cd|mkdir|curl|wget)\b[^;{}=]*$/.test(l.trim()),
+      )
+    ) {
+      block.skipped = 'shell commands, not code';
+      return findings;
+    }
+    // Side-by-side comparison layouts (upgrade guides).
+    const wide = cmdLines.filter((l) => /\S {4,}\S/.test(l));
+    if (cmdLines.length >= 3 && wide.length / cmdLines.length >= 0.6) {
+      block.skipped = 'column layout, not code';
       return findings;
     }
     // Some READMEs label JSON payloads as js.

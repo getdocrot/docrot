@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { CodeBlock, Finding, ProjectInfo } from '../types.js';
 
 const INSTALL_VERBS: Record<string, Set<string>> = {
@@ -51,8 +53,8 @@ function similarToOurs(arg: string, project: ProjectInfo): boolean {
   return levenshtein(unscoped(arg), bare) <= 2 && Math.abs(unscoped(arg).length - bare.length) <= 2;
 }
 
-function commandsIn(block: CodeBlock): Array<{ tokens: string[]; line: number }> {
-  const out: Array<{ tokens: string[]; line: number }> = [];
+function commandsIn(block: CodeBlock): Array<{ tokens: string[]; line: number; afterCd: boolean }> {
+  const out: Array<{ tokens: string[]; line: number; afterCd: boolean }> = [];
   const lines = block.value.split('\n');
   const hasPrompt = lines.some((l) => /^\s*\$\s+/.test(l));
   lines.forEach((raw, i) => {
@@ -63,12 +65,50 @@ function commandsIn(block: CodeBlock): Array<{ tokens: string[]; line: number }>
     }
     line = line.trim();
     if (!line || line.startsWith('#')) return;
+    let afterCd = false;
     for (const part of line.split(/&&|\|\||;|\|/)) {
       const tokens = part.trim().split(/\s+/).filter(Boolean);
-      if (tokens.length) out.push({ tokens, line: block.contentStartLine + i });
+      if (tokens.length) out.push({ tokens, line: block.contentStartLine + i, afterCd });
+      if (tokens[0] === 'cd') afterCd = true;
     }
   });
   return out;
+}
+
+const pkgScriptsCache = new Map<string, Set<string>>();
+
+function scriptsInDir(dir: string): Set<string> {
+  let set = pkgScriptsCache.get(dir);
+  if (set) return set;
+  set = new Set<string>();
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    for (const key of Object.keys(pkg.scripts ?? {})) set.add(key);
+  } catch {
+    // no package.json here
+  }
+  pkgScriptsCache.set(dir, set);
+  return set;
+}
+
+// `npm run x` inside docs/ usually refers to docs/package.json, and monorepo
+// READMEs reference workspace scripts — a script only counts as missing when
+// no package.json in scope defines it.
+function scriptsInScope(blockFile: string, project: ProjectInfo): Set<string> {
+  const all = new Set(project.scripts);
+  for (const dir of project.workspaces.values()) {
+    for (const s of scriptsInDir(dir)) all.add(s);
+  }
+  const rootAbs = path.resolve(project.root);
+  let dir = path.resolve(rootAbs, path.dirname(blockFile));
+  while (dir.startsWith(rootAbs)) {
+    for (const s of scriptsInDir(dir)) all.add(s);
+    if (dir === rootAbs) break;
+    dir = path.dirname(dir);
+  }
+  return all;
 }
 
 export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding[] {
@@ -77,11 +117,11 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
 
   for (const block of blocks) {
     const blockId = `${block.file}:${block.fenceLine}`;
-    for (const { tokens, line } of commandsIn(block)) {
+    for (const { tokens, line, afterCd } of commandsIn(block)) {
       const [cmd, ...rest] = tokens;
 
       // `npm run x` / `npm test` — the referenced script must exist.
-      if (RUN_CAPABLE.has(cmd) && project.scripts.size) {
+      if (RUN_CAPABLE.has(cmd) && project.scripts.size && !afterCd) {
         let script: string | undefined;
         if ((rest[0] === 'run' || rest[0] === 'run-script') && rest[1] && !rest[1].startsWith('-')) {
           script = rest[1];
@@ -91,14 +131,19 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
         if (
           script &&
           !/[<>[\]{}$*]/.test(script) && // `npm run <command>` is a usage pattern
-          !project.scripts.has(script) &&
+          !scriptsInScope(block.file, project).has(script) &&
           !rest.includes('--workspace') &&
           !rest.some((t) => t.startsWith('--workspace=') || t === '-w')
         ) {
+          // Deep docs often quote `npm run x` illustratively; only the repo's
+          // front-door files state it as an instruction with authority.
+          const authoritative = /^(readme|contributing|development|setup)/i.test(
+            path.basename(block.file),
+          );
           findings.push({
             file: block.file,
             line,
-            severity: 'error',
+            severity: authoritative ? 'error' : 'warning',
             check: 'missing-script',
             message: `package.json has no \`${script}\` script (docs say \`${cmd} run ${script}\`)`,
             snippet: tokens.join(' '),
