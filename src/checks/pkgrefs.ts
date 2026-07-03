@@ -90,6 +90,7 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
         }
         if (
           script &&
+          !/[<>[\]{}$*]/.test(script) && // `npm run <command>` is a usage pattern
           !project.scripts.has(script) &&
           !rest.includes('--workspace') &&
           !rest.some((t) => t.startsWith('--workspace=') || t === '-w')

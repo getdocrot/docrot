@@ -26,18 +26,46 @@ function isTemplateToken(url: string): boolean {
   return !KNOWN_EXTS.has(tail);
 }
 
-function anchorSetOf(doc: DocFile, cache: Map<string, Set<string>>): Set<string> {
-  let set = cache.get(doc.relPath);
-  if (set) return set;
-  set = new Set<string>();
-  const slugger = new GithubSlugger();
-  for (const heading of doc.headings) set.add(slugger.slug(heading));
-  for (const anchor of doc.htmlAnchors) {
-    set.add(anchor);
-    set.add(anchor.toLowerCase());
+// Slug algorithms disagree about unicode punctuation (CJK TOCs especially),
+// so non-matching anchors get a second chance on letters/digits alone.
+function fuzzySlug(text: string): string {
+  let out = '';
+  for (const ch of text.normalize('NFKC')) {
+    if (/[\p{L}\p{N}]/u.test(ch)) out += ch;
   }
-  cache.set(doc.relPath, set);
-  return set;
+  return out.toLowerCase();
+}
+
+interface AnchorIndex {
+  exact: Set<string>;
+  fuzzy: Set<string>;
+}
+
+function anchorSetOf(doc: DocFile, cache: Map<string, AnchorIndex>): AnchorIndex {
+  let index = cache.get(doc.relPath);
+  if (index) return index;
+  index = { exact: new Set(), fuzzy: new Set() };
+  const slugger = new GithubSlugger();
+  for (const heading of doc.headings) {
+    const slug = slugger.slug(heading);
+    index.exact.add(slug);
+    index.fuzzy.add(fuzzySlug(slug));
+  }
+  for (const anchor of doc.htmlAnchors) {
+    index.exact.add(anchor);
+    index.exact.add(anchor.toLowerCase());
+    index.fuzzy.add(fuzzySlug(anchor));
+  }
+  cache.set(doc.relPath, index);
+  return index;
+}
+
+function anchorMissing(index: AnchorIndex, fragment: string): boolean {
+  return (
+    !index.exact.has(fragment) &&
+    !index.exact.has(fragment.toLowerCase()) &&
+    !index.fuzzy.has(fuzzySlug(fragment))
+  );
 }
 
 function skippableFragment(fragment: string): boolean {
@@ -51,7 +79,7 @@ function skippableFragment(fragment: string): boolean {
 export function checkLinks(docs: DocFile[], root: string): Finding[] {
   const findings: Finding[] = [];
   const byRel = new Map(docs.map((d) => [d.relPath.split(path.sep).join('/'), d]));
-  const anchorCache = new Map<string, Set<string>>();
+  const anchorCache = new Map<string, AnchorIndex>();
 
   for (const doc of docs) {
     for (const ref of doc.links) {
@@ -76,7 +104,7 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
       if (!url) {
         if (skippableFragment(fragment)) continue;
         const anchors = anchorSetOf(doc, anchorCache);
-        if (!anchors.has(fragment) && !anchors.has(fragment.toLowerCase())) {
+        if (anchorMissing(anchors, fragment)) {
           findings.push({
             file: doc.relPath,
             line: ref.line,
@@ -119,7 +147,7 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
         const targetDoc = byRel.get(relTarget);
         if (targetDoc) {
           const anchors = anchorSetOf(targetDoc, anchorCache);
-          if (!anchors.has(fragment) && !anchors.has(fragment.toLowerCase())) {
+          if (anchorMissing(anchors, fragment)) {
             findings.push({
               file: doc.relPath,
               line: ref.line,

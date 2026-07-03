@@ -55,15 +55,46 @@ function parsesAsFragment(code: string): boolean {
     /^([ \t]*)([\w$]+(?:\.[\w$]+)+)(\s*(?:<[^<>\n]*>)?\()/gm,
     '$1function __sig$3',
   );
+  const parses = (text: string): boolean => transpileErrors(text, 'snippet.ts').length === 0;
   const shapes = [
     `(\n${code}\n)`,
+    // fluent-API docs quote chain continuations: `.option(...).parse()`
+    `__docrot\n${code}`,
+    // brace-less property lists: `input: 'x',\nstart: 3,`
+    `({\n${code}\n})`,
     `declare class __DocRotFragment {\n${code}\n}`,
     `type __DocRotFragment = {\n${code}\n};`,
     // hook/callback docs quote bare function types: `(a: A) => void`
     `type __DocRotFragment = (\n${code.replace(/;\s*$/, '')}\n);`,
+    // switch-body excerpts: `case 0: // next`
+    `switch (__docrot) {\n${code}\n}`,
+    // loop-body excerpts with continue/break
+    `function __docrot() { while (1) {\n${code}\n} }`,
     `declare module "__docrot__" {\n${signaturish}\n}`,
   ];
-  return shapes.some((wrapped) => transpileErrors(wrapped, 'snippet.ts').length === 0);
+  if (shapes.some(parses)) return true;
+
+  // Walkthrough docs quote regions that begin or end mid-block: strip
+  // leading/trailing close-brace lines and try the loop/switch shapes again.
+  const deblocked = code
+    .replace(/^(\s*[}\])]+;?,?\s*\n)+/, '')
+    .replace(/(\n\s*[}\])]+;?,?\s*)+$/, '');
+  if (deblocked !== code && deblocked.trim()) {
+    if (parses(deblocked)) return true;
+    if (parses(`function __docrot() { while (1) {\n${deblocked}\n} }`)) return true;
+    if (parses(`switch (__docrot) {\n${deblocked}\n}`)) return true;
+  }
+
+  // A statement (usually console.log) followed by its pasted output object.
+  const lines = code.split('\n');
+  for (let i = 1, tried = 0; i < lines.length && tried < 3; i++) {
+    if (!/^\s*\{/.test(lines[i])) continue;
+    tried++;
+    const head = lines.slice(0, i).join('\n');
+    const tail = lines.slice(i).join('\n');
+    if (parses(head) && parses(`(\n${tail}\n)`)) return true;
+  }
+  return false;
 }
 
 function pushDiagFindings(

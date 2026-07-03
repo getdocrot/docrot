@@ -64,6 +64,41 @@ app.use(
   // ...
 ```
 
+```js
+.option('-d, --debug')
+.option('-v, --verbose')
+```
+
+```ts
+export type MyType<Value extends string> = ... // omitted
+```
+
+```ts
+while (g && (g = 0, op[0] && (_ = 0)), _) try ...
+```
+
+```js
+case 0: // next
+case 1: // throw
+default:
+```
+
+```js
+const result = lib.scan('!./foo/*.js');
+console.log(result);
+{ prefix: '!./',
+  input: '!./foo/*.js',
+  isGlob: true }
+```
+
+```js
+const result = lib.parse(pattern[, options]);
+```
+
+```bash
+npm run <command> -- --flag
+```
+
 <!-- docrot-ignore -->
 ```js
 this is (definitely not valid

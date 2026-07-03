@@ -26,9 +26,10 @@ const ALWAYS_IGNORE = [
   '**/.vitepress/cache/**',
 ];
 
-// Changelogs are historical documents: their examples legitimately reference
-// old APIs, so scanning them is pure false-positive noise by default.
-const CHANGELOG_RE = /(^|\/)(changelog|changes|history|release[-_ ]?notes)[^/]*\.(md|mdx|markdown)$/i;
+// Changelogs and deprecation notes are historical documents: their examples
+// legitimately reference old APIs, so scanning them is false-positive noise.
+const CHANGELOG_RE =
+  /(^|\/)(changelog|changes|history|release[-_ ]?notes|deprecat(?:ed|ions?))[^/]*\.(md|mdx|markdown)$/i;
 
 export interface DiscoverResult {
   files: string[];

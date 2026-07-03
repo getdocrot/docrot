@@ -13,6 +13,9 @@ export function partialReason(code: string): string | null {
   if (code.includes('…')) return 'partial example (`…`)';
   if (ELLIPSIS_LINE_RE.test(code)) return 'partial example (`...`)';
   if (/[([{,]\s*\.{3}\s*[)\]},]/.test(code)) return 'partial example (`...`)';
+  if (/(^|[\s(])\.{3}\s*$/m.test(code)) return 'partial example (`...`)'; // `try ...`
+  if (/=\s*\.{3}\s*(\/\/|;|,|\)|$)/m.test(code)) return 'partial example (`= ...`)';
+  if (/\(\s*[\w.$'"]+\[,\s*[\w.$\s]+\]/.test(code)) return 'signature notation (`fn(a[, b])`)';
   if (UPPER_PLACEHOLDER_RE.test(code)) return 'placeholder values';
   if (WORDY_PLACEHOLDER_RE.test(code)) return 'placeholder values';
   if (MUSTACHE_RE.test(code)) return 'template placeholders';

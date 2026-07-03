@@ -50,6 +50,11 @@ describe('example verification', () => {
     expect(partial?.skipped).toBeTruthy();
   });
 
+  it('accepts fluent chains and skips ellipsis fragments', () => {
+    const syntaxErrors = result.findings.filter((f) => f.check === 'syntax' && f.severity === 'error');
+    expect(syntaxErrors).toHaveLength(1); // only `function broken( {`
+  });
+
   it('skips docrot-ignore blocks', () => {
     const ignored = result.files.flatMap((f) => f.blocks).find((b) => b.value.includes('definitely not valid'));
     expect(ignored?.skipped).toBeTruthy();
@@ -66,8 +71,9 @@ describe('package refs', () => {
     expect(has('missing-script', 'deploy')).toBe(true);
   });
 
-  it('accepts scripts that exist', () => {
-    expect(result.findings.some((f) => f.check === 'missing-script' && f.message.includes('`build`'))).toBe(false);
+  it('accepts scripts that exist and skips usage placeholders', () => {
+    const missing = result.findings.filter((f) => f.check === 'missing-script');
+    expect(missing).toHaveLength(1); // only `deploy`
   });
 
   it('warns on lookalike install names', () => {
