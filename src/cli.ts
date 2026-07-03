@@ -7,7 +7,7 @@ import { applyFixes, scan } from './index.js';
 import { renderGitHub, renderJson, renderTerminal, summaryLine } from './report.js';
 import type { ScanOptions } from './types.js';
 
-const VERSION = '0.2.3';
+const VERSION = '0.2.4';
 
 const HELP = `
 ${pc.bold('docrot')} — find the lies in your docs
