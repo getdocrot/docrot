@@ -78,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: getdocrot/docrot@v1
+      - uses: getdocrot/docrot@v0
         with:
           fail-on: error
 ```
