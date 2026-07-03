@@ -13,6 +13,12 @@
     "developer-experience"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getdocrot/docrot.git"
+  },
+  "bugs": "https://github.com/getdocrot/docrot/issues",
+  "homepage": "https://github.com/getdocrot/docrot#readme",
   "type": "module",
   "bin": {
     "docrot": "dist/cli.js"
