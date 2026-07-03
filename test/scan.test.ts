@@ -69,7 +69,12 @@ describe('example verification', () => {
   it('accepts jsonc conventions inside json blocks', () => {
     expect(result.findings.some((f) => f.check === 'data' && f.message.includes('jsonc'))).toBe(false);
     const dataErrors = result.findings.filter((f) => f.check === 'data' && f.severity === 'error');
-    expect(dataErrors).toHaveLength(2); // the deliberately invalid JSON + YAML only
+    expect(dataErrors).toHaveLength(1); // the deliberately invalid JSON; YAML is warn-only
+  });
+
+  it('reports invalid YAML as a warning, not an error', () => {
+    const yaml = result.findings.find((f) => f.check === 'data' && f.message.includes('YAML'));
+    expect(yaml?.severity).toBe('warning');
   });
 
   it('skips intentionally incorrect examples via context', () => {

@@ -51,7 +51,7 @@ export function docFragmentGate(block: CodeBlock, code: string): string | null {
     cmdLines.length > 0 &&
     cmdLines.length <= 4 &&
     cmdLines.every((l) =>
-      /^(node|npm|npx|yarn|pnpm|bun|bunx|deno|zx|git|sh|bash|cd|mkdir|curl|wget|python3?|pip3?|uv|poetry)\b[^;{}=]*$/.test(
+      /^(?:[A-Z_][A-Z0-9_]*=\S+\s+)*(node|npm|npx|yarn|pnpm|bun|bunx|deno|zx|git|sh|bash|cd|mkdir|curl|wget|python3?|pip3?|uv|poetry)\b[^;{}]*$/.test(
         l.trim(),
       ),
     )
@@ -133,14 +133,16 @@ function transpileErrors(code: string, fileName: string): ts.Diagnostic[] {
 // API-reference docs quote fragments that are only valid in context: bare
 // object literals, class/interface members, object-type bodies. If the block
 // parses under any of those shapes, it is not broken.
-function parsesAsFragment(code: string): boolean {
+function parsesAsFragment(code: string, jsxOk = true): boolean {
   // `axios.get(url: string): Promise<R>;` — signature notation with a dotted
   // receiver. Rewriting the receiver into an ambient function declaration
   // makes the annotations parse while anything genuinely broken still fails.
-  const signaturish = code.replace(
-    /^([ \t]*)([\w$]+(?:\.[\w$]+)+)(\s*(?:<[^<>\n]*>)?\()/gm,
-    '$1function __sig$3',
-  );
+  const signaturish = code
+    .replace(/^([ \t]*)((?:new\s+)?[\w$]+(?:\.[\w$]+)+)(\s*(?:<[^<>\n]*>)?\()/gm, '$1function __sig$3')
+    // constructor notation: `new QueryClientProvider(): QueryClientProvider;`
+    .replace(/^([ \t]*)new\s+[\w$]+(\s*(?:<[^<>\n]*>)?\()/gm, '$1function __sig$2')
+    // namespaced class notation: `class Bun.Transpiler { … }`
+    .replace(/^([ \t]*)class\s+[\w$]+(?:\.[\w$]+)+/gm, '$1class __DocRotDotted');
   const parses = (text: string): boolean => transpileErrors(text, 'snippet.ts').length === 0;
   const shapes = [
     `(\n${code}\n)`,
@@ -163,6 +165,60 @@ function parsesAsFragment(code: string): boolean {
     `declare module "__docrot__" {\n${signaturish}\n}`,
   ];
   if (shapes.some(parses)) return true;
+
+  // typedoc-generated references write members as `optional injector: Injector;`
+  // and unions with bare function types (`T | () => T`) — documentation
+  // notation, not TypeScript. Rewriting lets the member shapes decide;
+  // anything else broken in the block still fails.
+  if (/^\s*optional\s+[A-Za-z_$]/m.test(code) || /\|\s*\([^()]*\)\s*=>/.test(code)) {
+    const rewritten = code
+      .replace(/^(\s*)optional\s+([A-Za-z_$][\w$]*)\??/gm, '$1$2?')
+      .replace(/\|(\s*)(\([^()]*\)\s*=>\s*[\w$.[\]<>]+)/g, '|$1($2)');
+    if (
+      [
+        `type __DocRotFragment = {\n${rewritten}\n};`,
+        `declare class __DocRotFragment {\n${rewritten}\n}`,
+        `type __DocRotFragment =\n${rewritten}`,
+        `declare module "__docrot__" {\n${rewritten}\n}`,
+      ].some(parses)
+    ) {
+      return true;
+    }
+  }
+
+  // Component docs list sibling variants without a parent element:
+  // `<Btn />\n<Btn variant="x" /> // comment`. Only attempted when every
+  // top-level line is an element, a comment or a closer — fragment children
+  // accept nearly any text, so a blind wrap would swallow real rot.
+  if (jsxOk && /^[ \t]*</m.test(code)) {
+    const m = /^((?:[ \t]*(?:import|export)\b[^\n]*\n)*)([\s\S]*)$/.exec(code);
+    const imports = m?.[1] ?? '';
+    // Comment lines between sibling elements read as JSX text once wrapped —
+    // and often contain inline `<tags>` that would open phantom elements.
+    const body = (m?.[2] ?? code)
+      .split('\n')
+      .filter((l) => !/^\s*\/\//.test(l))
+      .join('\n');
+    const topLevel = body.split('\n').filter((l) => /^\S/.test(l));
+    const jsxish =
+      topLevel.length > 0 &&
+      topLevel.every((l) => /^(<|\/\*|\{)/.test(l.trim()) || /^[)\]}>;,]/.test(l.trim()));
+    if (
+      jsxish &&
+      transpileErrors(`${imports}const __docrot = <>\n${body}\n</>;`, 'snippet.tsx').length === 0
+    ) {
+      return true;
+    }
+  }
+
+  // Prop-table docs quote a lone JSX attribute: `getValueProps={() => ...}`.
+  if (
+    jsxOk &&
+    /^[A-Za-z_$][\w$-]*\s*=\s*[{"']/.test(code.trim()) &&
+    transpileErrors(`const __docrot = <__docrot ${code.trim()} />;`, 'snippet.tsx').length === 0
+  ) {
+    return true;
+  }
 
   // ESTree-style spec notation (babel, estree docs):
   // `interface X <: Y {` and `enum K { "a" | "b" }`
@@ -194,7 +250,34 @@ function parsesAsFragment(code: string): boolean {
   }
   if (current.length) chunks.push(current.join('\n'));
   if (chunks.length >= 2 && chunks.length <= 12) {
-    if (chunks.every((c) => parses(c) || parses(`(\n${c}\n)`))) return true;
+    const chunkOk = (c: string): boolean =>
+      parses(c) ||
+      parses(`(\n${c}\n)`) ||
+      // before/after listings quote bare property lists next to statements
+      parses(`({\n${c}\n})`) ||
+      // walkthroughs continue mid-switch after a setup statement
+      parses(`switch (__docrot) {\n${c}\n}`) ||
+      parses(`class __DocRotFragment {\n${c}\n}`);
+    if (chunks.every(chunkOk)) return true;
+  }
+
+  // Transformation tables (minifier docs, REPL sessions) list one standalone
+  // expression per line; consecutive lines glue into nonsense (`[a]\n[b]` reads
+  // as an index chain). Valid iff every line parses alone — a line that opens a
+  // brace it doesn't close fails, so multi-line bodies never sneak through.
+  const soloLines = code
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !/^\/\//.test(l) && !/^\/\*.*\*\/$/.test(l));
+  if (soloLines.length >= 2) {
+    const lineOk = (l: string): boolean => {
+      const c = l.replace(/;\s*$/, '');
+      if (!c) return true;
+      if (parses(c) || parses(`(\n${c}\n)`)) return true;
+      if (jsxOk && c.startsWith('<')) return transpileErrors(`(${c})`, 'snippet.tsx').length === 0;
+      return false;
+    };
+    if (soloLines.every(lineOk)) return true;
   }
 
   // Walkthrough docs quote regions that begin or end mid-block. Peel
@@ -240,7 +323,10 @@ function pushDiagFindings(
   const lines = block.value.split('\n');
   const seen = new Set<number>();
   for (const d of diags) {
-    if (seen.size >= 3) break;
+    // One finding per block: after the first real error the parser is lost and
+    // every later diagnostic is an echo of it (three findings for one missing
+    // paren reads as three bugs).
+    if (seen.size >= 1) break;
     let lineInBlock = lineOffset;
     if (d.file && typeof d.start === 'number') {
       lineInBlock = d.file.getLineAndCharacterOfPosition(d.start).line + lineOffset;
@@ -325,6 +411,35 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
           // not yaml-ish either
         }
       }
+      // Dependency-change diffs get fenced as json; valid once the -/+ prefixes
+      // are resolved to the "after" state.
+      if (/^[-+]/m.test(code)) {
+        const undiffed = code
+          .split('\n')
+          .filter((l) => !/^-/.test(l))
+          .map((l) => (/^\+/.test(l) ? l.slice(1) : l))
+          .join('\n');
+        try {
+          JSON.parse(stripJsonc(undiffed));
+          block.skipped = 'diff notation';
+          return findings;
+        } catch {
+          // not a clean diff
+        }
+      }
+      // `{ slug: ["a"] }` — a JS object literal labeled json. Wrong label,
+      // working code; a relabel nudge, not an error.
+      if (!transpileErrors(`(\n${code}\n)`, 'snippet.ts').length) {
+        findings.push({
+          file: block.file,
+          line: block.contentStartLine,
+          severity: 'warning',
+          check: 'data',
+          message: 'block is labeled `json` but is a JavaScript object literal (unquoted keys or expressions)',
+          blockId: blockIdOf(block),
+        });
+        return findings;
+      }
       const reason = partialReason(code);
       if (reason) {
         block.skipped = reason;
@@ -368,10 +483,13 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
         block.skipped = reason;
         return findings;
       }
+      // Warning, never error: yaml fences routinely hold templated or dialect
+      // content (helm/jinja values, Jenkinsfiles, tool-specific snapshot DSLs)
+      // that a strict parser cannot bless but real tooling accepts.
       findings.push({
         file: block.file,
         line: block.contentStartLine + firstError.line - 1,
-        severity: 'error',
+        severity: 'warning',
         check: 'data',
         message: `invalid YAML — ${firstError.message}`,
         blockId: blockIdOf(block),
@@ -383,6 +501,36 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
   if (block.norm === 'js' || block.norm === 'ts' || block.norm === 'jsx' || block.norm === 'tsx') {
     let diags = transpileErrors(code, fileNameFor(block));
     if (!diags.length) return findings;
+
+    // twoslash annotations (`// @errors: 2304`, `// @noErrors`) declare the
+    // block's diagnostics on purpose — the repo's own docs tooling checks them.
+    if (/^\s*\/\/\s*@(errors|noErrors)\b/m.test(code)) {
+      block.skipped = 'twoslash-annotated example';
+      return findings;
+    }
+
+    // `+++added+++` highlight markers (svelte-style diff emphasis).
+    if (code.includes('+++')) {
+      const stripped = code.replace(/\+\+\+/g, '');
+      if (!transpileErrors(stripped, fileNameFor(block)).length) {
+        block.skipped = 'diff highlight markers';
+        return findings;
+      }
+    }
+
+    // Upgrade guides fence diffs as code. If resolving the -/+ prefixes to the
+    // "after" state parses cleanly, it's a diff, not rot.
+    if (/^[-+]/m.test(code)) {
+      const undiffed = code
+        .split('\n')
+        .filter((l) => !/^-/.test(l))
+        .map((l) => (/^\+/.test(l) ? l.slice(1) : l))
+        .join('\n');
+      if (undiffed !== code && !transpileErrors(undiffed, fileNameFor(block)).length) {
+        block.skipped = 'diff notation';
+        return findings;
+      }
+    }
 
     // TypeScript syntax inside a ```js block: broken for anyone pasting into
     // a .js file, but worth calling out gently rather than as a syntax error.
@@ -402,7 +550,24 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
       diags = asTs;
     }
 
-    if (parsesAsFragment(code)) return findings;
+    if (parsesAsFragment(code, block.norm !== 'ts')) return findings;
+
+    // Mislabeled dialects: the code is fine under a sibling grammar, the fence
+    // label is what rots. Say that instead of crying syntax error.
+    if (!transpileErrors(code, 'snippet.tsx').length) {
+      findings.push({
+        file: block.file,
+        line: block.contentStartLine,
+        severity: 'warning',
+        check: 'syntax',
+        message:
+          block.norm === 'ts'
+            ? 'block is labeled `ts` but contains JSX — label it `tsx`'
+            : 'block is labeled `js` but contains TypeScript-only syntax',
+        blockId: blockIdOf(block),
+      });
+      return findings;
+    }
 
     const gate = docFragmentGate(block, code);
     if (gate) {

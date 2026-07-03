@@ -16,6 +16,18 @@ export function partialReason(code: string): string | null {
   if (/(^|[\s(])\.{3}\s*$/m.test(code)) return 'partial example (`...`)'; // `try ...`
   if (/=\s*\.{3}\s*(\/\/|;|,|\)|$)/m.test(code)) return 'partial example (`= ...`)';
   if (/=\s*\.\.\s*(\/\/|;|,|$)/m.test(code)) return 'partial example (`= ..`)';
+  // `...code...` / `...snip...` — an ellipsis-wrapped word standing in for code.
+  if (/^\s*\.{3}[\w-]+\.{3}\s*$/m.test(code)) return 'partial example (`...code...`)';
+  // A free-standing ` ... ` before a closer/terminator (`<X ... />`,
+  // `return ...;`). Real spreads glue an operand to the dots.
+  if (/(^|\s)\.{3}\s*([;,>)\]}]|\/>|$)/m.test(code)) return 'partial example (`...`)';
+  // `mutatesFunction: ...,` / `continueBlock: BlockId; ...}` — ellipsis as a
+  // member/value. A real spread always has an operand glued to the dots.
+  if (/[:;]\s*\.{3}\s*[,;)\]}]/.test(code)) return 'partial example (`...`)';
+  // `sink_parquet(.., lazy=True)` — two-dot placeholder in call position.
+  if (/[([{=,]\s*\.\.(?![.\w])/.test(code)) return 'partial example (`..`)';
+  // `from pkg import  # something goes here` — the import target is the blank.
+  if (/^[^#\n]*\bimport\s*(#[^\n]*)?$/m.test(code)) return 'partial example (import left blank)';
   if (/\(\s*[\w.$'"]+\[,\s*[\w.$\s]+\]/.test(code)) return 'signature notation (`fn(a[, b])`)';
   if (UPPER_PLACEHOLDER_RE.test(code)) return 'placeholder values';
   if (WORDY_PLACEHOLDER_RE.test(code)) return 'placeholder values';
@@ -36,5 +48,9 @@ export function tooTrivial(code: string): boolean {
 export function outputReason(code: string): string | null {
   if (/^\s+at .+ \(.+\)\s*$/m.test(code)) return 'console output, not code';
   if (/^[A-Za-z]+Error: /m.test(code) && /^\s*\^\s*$/m.test(code)) return 'console output, not code';
+  // `<function Model.serialize_foo at 0x111>` — a printed repr pasted as code.
+  if (/<(?:function|method|module|class|bound method|\w+ object) [^<>\n]* at 0x[0-9a-fA-F]+>/.test(code)) {
+    return 'printed repr, not code';
+  }
   return null;
 }

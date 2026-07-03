@@ -107,10 +107,57 @@ function skippableFragment(fragment: string): boolean {
   );
 }
 
+const SITE_CONFIGS = [
+  'mkdocs.yml',
+  'mkdocs.yaml',
+  'docusaurus.config.js',
+  'docusaurus.config.ts',
+  'docusaurus.config.mjs',
+];
+
 export function checkLinks(docs: DocFile[], root: string): Finding[] {
   const findings: Finding[] = [];
   const byRel = new Map(docs.map((d) => [d.relPath.split(path.sep).join('/'), d]));
   const anchorCache = new Map<string, AnchorIndex>();
+
+  // A markdown tree owned by a site generator routes links at build time, so
+  // a target missing from the repo is unverifiable rather than dead. Signals:
+  // routing front-matter on the file, a generator config over the tree, or a
+  // tree where most documents carry front-matter (generated/templated docs
+  // mix front-matter pages with raw includes — playwright's api/ files).
+  const rootSiteCfg = SITE_CONFIGS.some((f) => fs.existsSync(path.join(root, f)));
+  const treeCfgCache = new Map<string, boolean>();
+  const docsTreeOf = (relPath: string): string | null => {
+    const parts = relPath.split('/');
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (/^docs?$/i.test(parts[i])) return parts.slice(0, i + 1).join('/');
+    }
+    return null;
+  };
+  const treeFm = new Map<string, { fm: number; total: number }>();
+  for (const d of docs) {
+    const tree = docsTreeOf(d.relPath);
+    if (!tree) continue;
+    const stat = treeFm.get(tree) ?? { fm: 0, total: 0 };
+    stat.total++;
+    if ((d.frontMatterKeys ?? []).length > 0) stat.fm++;
+    treeFm.set(tree, stat);
+  }
+  const underSiteTree = (doc: DocFile): boolean => {
+    const fm = doc.frontMatterKeys ?? [];
+    if (fm.includes('id') || fm.includes('slug') || fm.includes('permalink')) return true;
+    const tree = docsTreeOf(doc.relPath);
+    if (!tree) return false;
+    if (rootSiteCfg) return true;
+    const stat = treeFm.get(tree);
+    if (stat && stat.total >= 10 && stat.fm / stat.total >= 0.5) return true;
+    let cached = treeCfgCache.get(tree);
+    if (cached === undefined) {
+      cached = ['.vitepress', '.vuepress'].some((d) => fs.existsSync(path.join(root, tree, d)));
+      treeCfgCache.set(tree, cached);
+    }
+    return cached;
+  };
 
   for (const doc of docs) {
     for (const ref of doc.links) {
@@ -156,9 +203,17 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
       // `migrating-to-1.0.0` has no extension — numbers don't count.
       const hasExt = /\.[a-z][a-z0-9]*$/i.test(url);
       // Docs-site links routinely drop the .md extension; accept the file the
-      // route points at before declaring the link dead.
-      const withRoutes = (b: string): string[] =>
-        hasExt ? [b] : [b, `${b}.md`, `${b}.mdx`, `${b}.html`, path.join(b, 'index.md')];
+      // route points at before declaring the link dead. A `.html` link is the
+      // rendered route of a markdown source — accept the source too.
+      const withRoutes = (b: string): string[] => {
+        if (!hasExt) return [b, `${b}.md`, `${b}.mdx`, `${b}.html`, path.join(b, 'index.md')];
+        if (/\.html?$/i.test(b)) {
+          return [b, b.replace(/\.html?$/i, '.md'), b.replace(/\.html?$/i, '.mdx')];
+        }
+        // Convention pages are named after the file they document —
+        // `entry.client.tsx` is published as `entry.client.tsx.md`.
+        return [b, `${b}.md`, `${b}.mdx`];
+      };
       let abs = withRoutes(base).find((c) => fs.existsSync(c));
       let siteStyle = false;
 
@@ -206,13 +261,15 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
             continue;
           }
         }
+        const siteTree = underSiteTree(doc);
         findings.push({
           file: doc.relPath,
           line: ref.line,
-          severity: hasExt ? 'error' : 'warning',
+          severity: hasExt && !siteTree ? 'error' : 'warning',
           check: ref.kind === 'image' ? 'missing-image' : 'broken-link',
           message: hasExt
-            ? `relative ${ref.kind === 'image' ? 'image' : 'link'} target \`${ref.url}\` does not exist`
+            ? `relative ${ref.kind === 'image' ? 'image' : 'link'} target \`${ref.url}\` does not exist` +
+              (siteTree ? ' in the repo (site-generator source tree — it may only exist in the built site)' : '')
             : `relative link \`${ref.url}\` matches no file or .md/.html route`,
         });
         continue;

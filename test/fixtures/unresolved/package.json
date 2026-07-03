@@ -1,0 +1,8 @@
+{
+  "name": "unres-pkg",
+  "version": "1.0.0",
+  "types": "./index.d.ts",
+  "dependencies": {
+    "some-external-dep-not-installed": "^1.0.0"
+  }
+}

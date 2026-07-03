@@ -29,7 +29,23 @@ const LANG_MAP: Record<string, NormLang> = {
 };
 
 const META_SKIP_RE = /(^|\s)(docrot-)?(ignore|skip|no-?check|no-?verify)(\s|$)/i;
+// pytest-examples / mkdocs conventions: ```python {lint="skip" test="skip"}
+// already declares "do not verify me" to the repo's own tooling.
+const META_ATTR_SKIP_RE = /\b(lint|test|check|verify|upgrade|exec(?:ution)?)\s*=\s*["']?(skip|false|off|no|none)["']?/i;
 const IGNORE_COMMENT_RE = /docrot-(ignore|disable)/i;
+
+/** Top-level keys of a leading YAML front-matter block, [] when absent. */
+function frontMatterKeysOf(content: string): string[] {
+  if (!/^---\r?\n/.test(content)) return [];
+  const end = content.indexOf('\n---', 3);
+  if (end === -1 || end > 4000) return [];
+  const keys: string[] = [];
+  for (const line of content.slice(4, end).split('\n')) {
+    const m = /^([A-Za-z_][\w-]*)\s*:/.exec(line);
+    if (m) keys.push(m[1]);
+  }
+  return keys;
+}
 
 function textOf(node: any): string {
   if (node.type === 'text' || node.type === 'inlineCode') return String(node.value ?? '');
@@ -50,6 +66,7 @@ export function parseDoc(absPath: string, relPath: string, content: string): Doc
     links: [],
     headings: [],
     htmlAnchors: [],
+    frontMatterKeys: frontMatterKeysOf(content),
   };
 
   let tree: unknown;
@@ -81,7 +98,10 @@ export function parseDoc(absPath: string, relPath: string, content: string): Doc
         const langRaw = node.lang ? String(node.lang).toLowerCase() : null;
         const norm: NormLang = langRaw ? (LANG_MAP[langRaw] ?? 'other') : 'other';
         let skipped: string | null = null;
-        if (node.meta && META_SKIP_RE.test(String(node.meta))) {
+        if (
+          node.meta &&
+          (META_SKIP_RE.test(String(node.meta)) || META_ATTR_SKIP_RE.test(String(node.meta)))
+        ) {
           skipped = 'ignored via fence meta';
         } else if (ignoreUntilLine >= 0 && line - ignoreUntilLine <= 2) {
           skipped = 'ignored via docrot-ignore comment';

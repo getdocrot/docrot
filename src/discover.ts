@@ -31,6 +31,17 @@ const ALWAYS_IGNORE = [
   '**/__tests__/**',
   '**/__fixtures__/**',
   '**/testdata/**',
+  // Decision records document proposals and their history, including code
+  // sketches that were never meant to compile and template links.
+  '**/decisions/**',
+  '**/decision-records/**',
+  '**/adr/**',
+  '**/adrs/**',
+  '**/rfc/**',
+  '**/rfcs/**',
+  '**/proposals/**',
+  // `FOO.old.md` is an explicitly retired document.
+  '**/*.old.*',
 ];
 
 // Changelogs and deprecation notes are historical documents: their examples

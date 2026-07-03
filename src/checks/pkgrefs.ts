@@ -111,14 +111,42 @@ function scriptsInScope(blockFile: string, project: ProjectInfo): Set<string> {
   return all;
 }
 
+/** True when a `cd` target stays inside the repo (workspace hops are fine). */
+function cdStaysInRepo(dest: string, blockFile: string, root: string): boolean {
+  const clean = dest.replace(/^["']|["']$/g, '');
+  if (!clean || clean === '-') return true;
+  if (path.isAbsolute(clean) || clean.startsWith('~')) return false;
+  return (
+    fs.existsSync(path.resolve(root, clean)) ||
+    fs.existsSync(path.resolve(root, path.dirname(blockFile), clean))
+  );
+}
+
+/** `bun run x` also runs the file `x` — only a missing script AND file rots. */
+function bunRunnableFile(script: string, blockFile: string, root: string): boolean {
+  const dirs = [path.resolve(root, path.dirname(blockFile)), path.resolve(root)];
+  const names = [script, `${script}.ts`, `${script}.js`, `${script}.tsx`, `${script}.mjs`, `${script}.sh`];
+  return dirs.some((d) => names.some((n) => fs.existsSync(path.join(d, n))));
+}
+
 export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding[] {
   const findings: Finding[] = [];
   if (!project.pkg) return findings;
+
+  // Scaffold walkthroughs (`npm create x && cd x`) leave the repo: every
+  // script/install reference after that point belongs to the generated app.
+  const escapedFiles = new Set<string>();
 
   for (const block of blocks) {
     const blockId = `${block.file}:${block.fenceLine}`;
     for (const { tokens, line, afterCd } of commandsIn(block)) {
       const [cmd, ...rest] = tokens;
+
+      const fileEscaped = escapedFiles.has(block.file);
+      if (cmd === 'cd' && rest[0] && !cdStaysInRepo(rest[0], block.file, project.root)) {
+        escapedFiles.add(block.file);
+      }
+      if (fileEscaped) continue;
 
       // `npm run x` / `npm test` — the referenced script must exist.
       if (RUN_CAPABLE.has(cmd) && project.scripts.size && !afterCd) {
@@ -128,6 +156,14 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
         } else if (cmd === 'npm' && (rest[0] === 'test' || rest[0] === 'start') && !rest.includes('--workspace')) {
           script = rest[0];
         }
+        // `npm start` without a start script legally falls back to server.js.
+        if (script === 'start' && fs.existsSync(path.join(project.root, 'server.js'))) {
+          script = undefined;
+        }
+        // `bun run x` executes the file `x` when no script named `x` exists.
+        if (script && cmd === 'bun' && bunRunnableFile(script, block.file, project.root)) {
+          script = undefined;
+        }
         if (
           script &&
           !/[<>[\]{}$*]/.test(script) && // `npm run <command>` is a usage pattern
@@ -136,10 +172,12 @@ export function checkPkgRefs(blocks: CodeBlock[], project: ProjectInfo): Finding
           !rest.some((t) => t.startsWith('--workspace=') || t === '-w')
         ) {
           // Deep docs often quote `npm run x` illustratively; only the repo's
-          // front-door files state it as an instruction with authority.
-          const authoritative = /^(readme|contributing|development|setup)/i.test(
-            path.basename(block.file),
-          );
+          // front-door files state it as an instruction with authority. A
+          // private package's README documents the product, not the repo
+          // (runtimes like bun teach `bun run <file>` there), so never error.
+          const authoritative =
+            !project.isPrivate &&
+            /^(readme|contributing|development|setup)/i.test(path.basename(block.file));
           const near = [...scriptsInScope(block.file, project)]
             .filter((s) => levenshtein(s, script) <= 2)
             .sort((a, b) => levenshtein(a, script) - levenshtein(b, script));

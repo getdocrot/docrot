@@ -76,6 +76,8 @@ export interface DocFile {
   links: LinkRef[];
   headings: string[];
   htmlAnchors: string[];
+  /** Top-level keys of a leading YAML front-matter block (site-generator sources). */
+  frontMatterKeys?: string[];
 }
 
 export interface PackageJson {

@@ -9,6 +9,19 @@ import type { CodeBlock, Finding } from '../types.js';
 const DRIVER = `
 import ast, json, re, sys, textwrap
 
+def comment_bodies_to_pass(code):
+    # "def f():\\n    # body omitted" is a placeholder convention, not rot.
+    lines = code.split("\\n")
+    changed = False
+    out = []
+    for l in lines:
+        if l.strip().startswith("#"):
+            out.append(l[: len(l) - len(l.lstrip())] + "pass")
+            changed = True
+        else:
+            out.append(l)
+    return "\\n".join(out) if changed else None
+
 def variants(code):
     yield code
     yield textwrap.dedent(code)
@@ -19,6 +32,10 @@ def variants(code):
     no_magic = [l for l in lines if not re.match(r"^\\s*[%!]", l)]
     if len(no_magic) != len(lines):
         yield textwrap.dedent("\\n".join(no_magic))
+    ctp = comment_bodies_to_pass(code)
+    if ctp is not None:
+        yield ctp
+        yield textwrap.dedent(ctp)
     body = textwrap.indent(textwrap.dedent(code), "    ")
     yield "def __docrot__():\\n" + body
     yield "async def __docrot__():\\n" + body
@@ -62,9 +79,21 @@ function findPython(): string | null {
   return null;
 }
 
+// `# requirements.txt` as the first line means the fence shows another file's
+// contents (requirements, dotenv, config) under a python label for highlighting.
+const FILENAME_COMMENT_RE = /^#\s*\.?[\w./-]+\.(txt|toml|cfg|ini|env|ya?ml|json|lock|conf)\s*$/;
+
 export function checkPythonBlocks(blocks: CodeBlock[]): Finding[] {
   const findings: Finding[] = [];
-  const candidates = blocks.filter((b) => !b.skipped && b.value.trim().length >= 4);
+  const candidates = blocks.filter((b) => {
+    if (b.skipped || b.value.trim().length < 4) return false;
+    const firstLine = b.value.split('\n').find((l) => l.trim());
+    if (firstLine && FILENAME_COMMENT_RE.test(firstLine.trim())) {
+      b.skipped = 'contents of another file, not python';
+      return false;
+    }
+    return true;
+  });
   if (!candidates.length) return findings;
   const bin = findPython();
   if (!bin) return findings; // no interpreter: python blocks stay unverified

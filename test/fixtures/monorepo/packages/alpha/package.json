@@ -1,0 +1,13 @@
+{
+  "name": "@mono/alpha",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "dependencies": {
+    "mono-beta": "1.0.0"
+  }
+}
