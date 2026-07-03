@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { applyFixes, healthGrade, scan } from './index.js';
 import type { ScanResult } from './types.js';
 
-const VERSION = '0.2.2';
+const VERSION = '0.2.3';
 const MAX_FINDINGS = 200;
 
 function compact(result: ScanResult, max = MAX_FINDINGS) {

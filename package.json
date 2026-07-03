@@ -1,6 +1,6 @@
 {
   "name": "docrot-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Find the lies in your docs — verifies every code example, import, link and config in your markdown against the code that actually ships.",
   "keywords": [
     "documentation",
@@ -22,6 +22,7 @@
   "type": "module",
   "bin": {
     "docrot": "dist/cli.js",
+    "docrot-cli": "dist/cli.js",
     "docrot-mcp": "dist/mcp.js"
   },
   "main": "dist/index.js",
