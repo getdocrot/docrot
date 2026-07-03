@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/logo.png" alt="docrot logo" width="130"></p>
+
 # docrot
 
 **Your docs are lying. Find out where — before your users (and their AI agents) copy-paste the lie.**
