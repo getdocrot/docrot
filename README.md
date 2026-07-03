@@ -141,6 +141,31 @@ deliberately broken example
 }
 ```
 
+### Use it from your coding agent (MCP)
+
+docrot ships an MCP server, so agents get deterministic docs verification as a tool
+instead of guessing:
+
+```bash
+claude mcp add docrot -- npx -y -p docrot-cli docrot-mcp
+```
+
+Or in any MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "docrot": {
+      "command": "npx",
+      "args": ["-y", "-p", "docrot-cli", "docrot-mcp"]
+    }
+  }
+}
+```
+
+Tools: `scan_docs` (graded JSON findings) and `fix_docs` (mechanical repairs —
+previews by default, writes only with `dryRun: false`).
+
 ### Programmatic API
 
 ```js
@@ -159,7 +184,6 @@ docrot resolves your package's real entry point (exports map → types → sourc
 - Python / Go / Rust example verification
 - `--fix` for the long tail: AI-assisted rewrites (bring your own key)
 - Execution mode: actually run examples in a sandbox
-- MCP server, so your coding agent can call docrot directly
 - `llms.txt` verification — keep your AI-facing docs honest too
 - Verified-docs badge service
 - Semantic checks: does `client.users.list()` exist on the type?

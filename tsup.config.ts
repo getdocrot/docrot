@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: { cli: 'src/cli.ts', index: 'src/index.ts' },
+  entry: { cli: 'src/cli.ts', index: 'src/index.ts', mcp: 'src/mcp.ts' },
   format: ['esm'],
   platform: 'node',
   target: 'node18',
