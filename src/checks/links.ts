@@ -185,6 +185,27 @@ export function checkLinks(docs: DocFile[], root: string): Finding[] {
       }
 
       if (!abs) {
+        // i18n docs trees (docs/de/…) link pages that only exist in the
+        // default-language tree; static site generators fall back at build
+        // time, but the link 404s when browsing the repo.
+        const i18n = doc.relPath.match(/(^|\/)docs\/([a-z]{2}(?:[-_][A-Za-z]{2,4})?)\//);
+        if (i18n && i18n[2] !== 'en') {
+          const enRel = doc.relPath.replace(
+            new RegExp(`(^|/)docs/${i18n[2]}/`),
+            '$1docs/en/',
+          );
+          const enBase = path.resolve(path.dirname(path.join(root, enRel)), url);
+          if (withRoutes(enBase).some((c) => fs.existsSync(c))) {
+            findings.push({
+              file: doc.relPath,
+              line: ref.line,
+              severity: 'warning',
+              check: 'broken-link',
+              message: `\`${ref.url}\` only exists in the en docs tree — the site falls back, GitHub 404s`,
+            });
+            continue;
+          }
+        }
         findings.push({
           file: doc.relPath,
           line: ref.line,

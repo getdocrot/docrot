@@ -1,6 +1,10 @@
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
+
+const hasPython =
+  spawnSync('python3', ['--version']).status === 0 || spawnSync('python', ['--version']).status === 0;
 import { scan } from '../src/index.js';
 import type { ScanResult } from '../src/types.js';
 
@@ -52,7 +56,14 @@ describe('example verification', () => {
 
   it('accepts fluent chains, spec notation, html comments and alternatives', () => {
     const syntaxErrors = result.findings.filter((f) => f.check === 'syntax' && f.severity === 'error');
-    expect(syntaxErrors).toHaveLength(2); // `function broken( {` and the missing-comma block
+    // `function broken( {`, the missing-comma block, and (with python) `def bro_ken(:`
+    expect(syntaxErrors).toHaveLength(hasPython ? 3 : 2);
+  });
+
+  it.skipIf(!hasPython)('verifies python blocks with doctest/fragment/magic tolerance', () => {
+    const pythonFindings = result.findings.filter((f) => f.message.startsWith('Python:'));
+    expect(pythonFindings).toHaveLength(1); // only `def bro_ken(:`
+    expect(pythonFindings[0].snippet).toContain('bro_ken');
   });
 
   it('accepts jsonc conventions inside json blocks', () => {

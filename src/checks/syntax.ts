@@ -17,6 +17,55 @@ function blockIdOf(block: CodeBlock): string {
   return `${block.file}:${block.fenceLine}`;
 }
 
+/**
+ * Language-independent reasons a failing block is an intentional fragment,
+ * not rot. Consulted only after real parsing has already failed.
+ */
+export function docFragmentGate(block: CodeBlock, code: string): string | null {
+  const output = outputReason(code);
+  if (output) return output;
+  const reason = partialReason(code);
+  if (reason) return reason;
+  if (block.contextHint && INTENTIONALLY_BROKEN_RE.test(block.contextHint)) {
+    return 'intentionally incorrect example';
+  }
+  // Tokenizer/linter docs demonstrate invalid input and say so in the code.
+  // Narrower than the prose guard: identifiers named `broken`/`bad` are
+  // everywhere, but nobody writes the word "invalid" in working examples.
+  if (/\b(invalid|incorrect)\b/i.test(code)) return 'demonstrates invalid code';
+  // mkdocs/markdown-include snippet directives: `{!> ../../docs_src/x.py !}`
+  if (/\{!.*!\}/.test(code)) return 'docs-include directive';
+  // Directory-tree diagrams get fenced as code often enough to matter.
+  if (/[├└┌┬┴│]/.test(code)) return 'diagram, not code';
+  // Human alternatives notation: `"before": "always" or "never"`
+  if (/(['"])(?:(?!\1).)*\1\s+or\s+['"]/.test(code)) return 'alternatives notation (`"a" or "b"`)';
+  // Flow type syntax is not TypeScript, but it isn't rot either.
+  if (/<\*>|@flow\b/.test(code)) return 'Flow type syntax';
+  // Math derivations: `e + b = (k1 & 0xffff) * c1`
+  if (/^\s*[\w$]+\s*[+*&|^-]\s*[\w$]+\s*=[^=]/m.test(code)) return 'math notation, not code';
+  // Raw HTTP multipart payloads pasted into a code fence.
+  if (/^-{10,}\d{4,}/m.test(code)) return 'protocol output, not code';
+  // Terminal commands in a code fence: `node file.js`, `pip install x`…
+  const cmdLines = code.split('\n').filter((l) => l.trim() && !/^\s*(\/\/|#)/.test(l));
+  if (
+    cmdLines.length > 0 &&
+    cmdLines.length <= 4 &&
+    cmdLines.every((l) =>
+      /^(node|npm|npx|yarn|pnpm|bun|bunx|deno|zx|git|sh|bash|cd|mkdir|curl|wget|python3?|pip3?|uv|poetry)\b[^;{}=]*$/.test(
+        l.trim(),
+      ),
+    )
+  ) {
+    return 'shell commands, not code';
+  }
+  // Side-by-side comparison layouts (upgrade guides).
+  const wide = cmdLines.filter((l) => /\S {4,}\S/.test(l));
+  if (cmdLines.length >= 3 && wide.length / cmdLines.length >= 0.6) {
+    return 'column layout, not code';
+  }
+  return null;
+}
+
 // Rule docs deliberately show broken code ("examples of incorrect code…").
 // Only consulted after a block has already failed every parse shape.
 const INTENTIONALLY_BROKEN_RE =
@@ -235,6 +284,21 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
           // keep trying
         }
       }
+      // JSON Lines: one document per line.
+      const jsonLines = code.split('\n').filter((l) => l.trim());
+      if (
+        jsonLines.length >= 2 &&
+        jsonLines.every((l) => {
+          try {
+            JSON.parse(l);
+            return true;
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        return findings;
+      }
       // Several JSON documents pasted in one fence, separated by blank lines.
       const jsonChunks = code.split(/\n\s*\n+/).filter((c) => c.trim());
       if (
@@ -340,71 +404,9 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
 
     if (parsesAsFragment(code)) return findings;
 
-    const output = outputReason(code);
-    if (output) {
-      block.skipped = output;
-      return findings;
-    }
-
-    const reason = partialReason(code);
-    if (reason) {
-      block.skipped = reason;
-      return findings;
-    }
-    if (block.contextHint && INTENTIONALLY_BROKEN_RE.test(block.contextHint)) {
-      block.skipped = 'intentionally incorrect example';
-      return findings;
-    }
-    // Tokenizer/linter docs demonstrate invalid input and say so in the code.
-    // Narrower than the prose guard: identifiers named `broken`/`bad` are
-    // everywhere, but nobody writes the word "invalid" in working examples.
-    if (/\b(invalid|incorrect)\b/i.test(code)) {
-      block.skipped = 'demonstrates invalid code';
-      return findings;
-    }
-    // Directory-tree diagrams get fenced as js often enough to matter.
-    if (/[├└┌┬┴│]/.test(code)) {
-      block.skipped = 'diagram, not code';
-      return findings;
-    }
-    // Human alternatives notation: `"before": "always" or "never"`
-    if (/(['"])(?:(?!\1).)*\1\s+or\s+['"]/.test(code)) {
-      block.skipped = 'alternatives notation (`"a" or "b"`)';
-      return findings;
-    }
-    // Flow type syntax is not TypeScript, but it isn't rot either.
-    if (/<\*>|@flow\b/.test(code)) {
-      block.skipped = 'Flow type syntax';
-      return findings;
-    }
-    // Math derivations: `e + b = (k1 & 0xffff) * c1`
-    if (/^\s*[\w$]+\s*[+*&|^-]\s*[\w$]+\s*=[^=]/m.test(code)) {
-      block.skipped = 'math notation, not code';
-      return findings;
-    }
-    // Raw HTTP multipart payloads pasted into a code fence.
-    if (/^-{10,}\d{4,}/m.test(code)) {
-      block.skipped = 'protocol output, not code';
-      return findings;
-    }
-    // Terminal commands in a js fence: `node file.js`, `zx script.mjs`…
-    const cmdLines = code
-      .split('\n')
-      .filter((l) => l.trim() && !/^\s*\/\//.test(l));
-    if (
-      cmdLines.length > 0 &&
-      cmdLines.length <= 4 &&
-      cmdLines.every((l) =>
-        /^(node|npm|npx|yarn|pnpm|bun|bunx|deno|zx|git|sh|bash|cd|mkdir|curl|wget)\b[^;{}=]*$/.test(l.trim()),
-      )
-    ) {
-      block.skipped = 'shell commands, not code';
-      return findings;
-    }
-    // Side-by-side comparison layouts (upgrade guides).
-    const wide = cmdLines.filter((l) => /\S {4,}\S/.test(l));
-    if (cmdLines.length >= 3 && wide.length / cmdLines.length >= 0.6) {
-      block.skipped = 'column layout, not code';
+    const gate = docFragmentGate(block, code);
+    if (gate) {
+      block.skipped = gate;
       return findings;
     }
     // Some READMEs label JSON payloads as js.

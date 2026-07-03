@@ -24,6 +24,13 @@ const ALWAYS_IGNORE = [
   '**/__pycache__/**',
   '**/.docusaurus/**',
   '**/.vitepress/cache/**',
+  // Test trees are full of deliberately-broken sample docs (every good test
+  // suite has its own rotten fixtures — ask ours).
+  '**/test/**',
+  '**/tests/**',
+  '**/__tests__/**',
+  '**/__fixtures__/**',
+  '**/testdata/**',
 ];
 
 // Changelogs and deprecation notes are historical documents: their examples

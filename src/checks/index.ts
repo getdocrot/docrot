@@ -4,9 +4,10 @@ import { classifyImport, extractImports } from './imports.js';
 import { addSelfImport, checkSelfExports, type SelfImportGroup } from './exports.js';
 import { checkLinks } from './links.js';
 import { checkPkgRefs } from './pkgrefs.js';
+import { checkPythonBlocks } from './python.js';
 
 const CODE_LANGS = new Set(['js', 'ts', 'jsx', 'tsx']);
-const VERIFIABLE_LANGS = new Set(['js', 'ts', 'jsx', 'tsx', 'json', 'yaml']);
+const VERIFIABLE_LANGS = new Set(['js', 'ts', 'jsx', 'tsx', 'json', 'yaml', 'python']);
 
 export function runChecks(project: ProjectInfo, docs: DocFile[], opts: ScanOptions): Finding[] {
   const findings: Finding[] = [];
@@ -49,6 +50,9 @@ export function runChecks(project: ProjectInfo, docs: DocFile[], opts: ScanOptio
     if (selfGroups.size) {
       findings.push(...checkSelfExports(project, [...selfGroups.values()]));
     }
+    findings.push(
+      ...checkPythonBlocks(docs.flatMap((d) => d.blocks).filter((b) => b.norm === 'python')),
+    );
   }
 
   if (checks.links !== false) {

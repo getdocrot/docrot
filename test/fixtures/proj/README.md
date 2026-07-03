@@ -142,6 +142,46 @@ a// 1
 }
 ```
 
+```js
+{!> ../../docs_src/tutorial001.py !}
+```
+
+```json
+{"event": "start", "id": 1}
+{"event": "end", "id": 2}
+```
+
+## Python
+
+```python
+    first_name: str, last_name: str
+```
+
+```python
+def greet(name: str) -> str:
+    return f"hello {name}"
+```
+
+```python
+def bro_ken(:
+    pass
+```
+
+```python
+>>> import json
+>>> json.loads("{}")
+{}
+```
+
+```python
+    return self._value
+```
+
+```python
+%pip install requests
+import requests
+```
+
 Examples of **incorrect** code for this rule:
 
 ```js
