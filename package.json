@@ -1,5 +1,5 @@
 {
-  "name": "docrot",
+  "name": "docrot-cli",
   "version": "0.1.0",
   "description": "Find the lies in your docs — verifies every code example, import, link and config in your markdown against the code that actually ships.",
   "keywords": [

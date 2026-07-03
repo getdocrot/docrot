@@ -17,7 +17,7 @@
   <circle cx="62" cy="18" r="6" fill="#28c840"/>
   <text x="370" y="22" text-anchor="middle" class="t dim">docrot — axios</text>
 
-  <text x="24" y="64" class="t"><tspan class="grn">$</tspan> <tspan class="wht">npx docrot</tspan></text>
+  <text x="24" y="64" class="t"><tspan class="grn">$</tspan> <tspan class="wht">npx docrot-cli</tspan></text>
   <text x="24" y="85" class="t dim">docrot v0.1.0 — scanning ~/oss/axios</text>
 
   <text x="24" y="122" class="t wht">docs/pages/advanced/request-config.md</text>

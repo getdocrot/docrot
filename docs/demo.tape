@@ -13,7 +13,7 @@ Set Height 620
 Set Padding 16
 Set Theme "GitHub Dark"
 
-Type "npx docrot ../axios-demo"
+Type "npx docrot-cli ../axios-demo"
 Sleep 500ms
 Enter
 Sleep 8s

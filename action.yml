@@ -24,4 +24,4 @@ runs:
   steps:
     - name: Run docrot
       shell: bash
-      run: npx --yes docrot@${{ inputs.version }} "${{ inputs.path }}" --reporter=github --fail-on="${{ inputs.fail-on }}"
+      run: npx --yes docrot-cli@${{ inputs.version }} "${{ inputs.path }}" --reporter=github --fail-on="${{ inputs.fail-on }}"

@@ -7,7 +7,7 @@
 `docrot` verifies every code example, import, link and anchor in your markdown **against the code that actually ships**. Zero config. One command. CI-ready.
 
 ```bash
-npx docrot
+npx docrot-cli
 ```
 
 <p align="center"><img src="docs/assets/demo.svg" alt="docrot output on axios: broken config example and a dead README link found" width="740"></p>
@@ -57,10 +57,10 @@ If docrot says it's broken, it's broken.
 
 ```bash
 # nothing to install — run it right now
-npx docrot
+npx docrot-cli
 
-# or keep it in the project
-npm install -D docrot
+# or keep it in the project (the command is `docrot`)
+npm install -D docrot-cli
 ```
 
 Requires Node.js 18.17+.
@@ -85,7 +85,7 @@ jobs:
 Findings show up as inline annotations on the exact markdown lines. Or run it anywhere:
 
 ```bash
-npx docrot --reporter=github --fail-on=error
+npx docrot-cli --reporter=github --fail-on=error
 ```
 
 ## Usage
@@ -126,7 +126,7 @@ deliberately broken example
 ### Programmatic API
 
 ```js
-import { scan, healthGrade } from 'docrot';
+import { scan, healthGrade } from 'docrot-cli';
 
 const result = await scan('.');
 console.log(healthGrade(result), result.stats.errors);
