@@ -89,6 +89,38 @@ Findings show up as inline annotations on the exact markdown lines. Or run it an
 npx docrot-cli --reporter=github --fail-on=error
 ```
 
+## Pre-commit
+
+Use a local hook for fast feedback on staged markdown while keeping the full scan
+in CI:
+
+```bash
+npm install -D husky docrot-cli
+npx husky init
+cat > .husky/pre-commit <<'EOF'
+#!/usr/bin/env sh
+set -eu
+
+staged_files="$(
+  git diff --cached --name-only --diff-filter=ACMR -- '*.md' '*.mdx' '*.markdown'
+)"
+
+[ -z "$staged_files" ] && exit 0
+
+printf '%s\n' "$staged_files" |
+  while IFS= read -r file; do dirname "$file"; done |
+  sort -u |
+  while IFS= read -r dir; do
+    npx docrot-cli "$dir" --only links,pkg
+  done
+EOF
+chmod +x .husky/pre-commit
+```
+
+The hook checks links, anchors, package names, scripts, and CLI bins near the
+files you are committing. CI should still run `docrot` on the whole repo so
+example code and untouched docs are verified before merge.
+
 ## Usage
 
 ```text
