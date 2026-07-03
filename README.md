@@ -10,7 +10,7 @@
 npx docrot-cli
 ```
 
-<p align="center"><img src="docs/assets/demo.svg" alt="docrot output on axios: broken config example and a dead README link found" width="740"></p>
+<p align="center"><img src="docs/assets/demo.gif" alt="docrot scanning axios: real broken examples and a dead README link found in 4.5 seconds" width="820"></p>
 
 *Real output from running docrot on axios — it found a dead link that has been sitting in the README and a config example that isn't valid JavaScript. Docs rot happens to everyone.*
 
