@@ -154,10 +154,12 @@ async function main(): Promise<void> {
   const failOn = values['fail-on'];
   const { errors, warnings } = finalResult.stats;
   const fail = failOn === 'never' ? false : failOn === 'warning' ? errors + warnings > 0 : errors > 0;
-  process.exit(fail ? 1 : 0);
+  // exitCode, not exit(): exit() drops whatever stdout hasn't flushed to a
+  // pipe yet, which truncates large reports right before the summary line.
+  process.exitCode = fail ? 1 : 0;
 }
 
 main().catch((err) => {
   console.error(pc.red(`docrot: unexpected error — ${(err as Error)?.stack ?? err}`));
-  process.exit(2);
+  process.exitCode = 2;
 });

@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  # npm provenance: the runner mints an OIDC token and npm attaches a signed
+  # Sigstore attestation linking the package to this repo, commit and workflow.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run typecheck
+
+      - run: npm run build
+
+      - name: Self-scan gate
+        run: node dist/cli.js .
+
+      - name: Tag matches the version everywhere
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          [ "v$pkg" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != package.json $pkg"; exit 1; }
+          grep -q "const VERSION = '$pkg'" src/cli.ts || { echo "src/cli.ts VERSION != $pkg"; exit 1; }
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
