@@ -4,7 +4,7 @@
 
 **Your docs are lying. Find out where — before your users (and their AI agents) copy-paste the lie.**
 
-`docrot` verifies every code example, import, link and anchor in your markdown **against the code that actually ships**. Zero config. One command. CI-ready.
+`docrot` verifies every code example, import, link and anchor in your markdown **against the code that actually ships**. Zero config. One command. CI-ready. Fast: FastAPI's 4,868 code blocks verify in ~9s; axios in ~4s.
 
 ```bash
 npx docrot-cli
@@ -33,7 +33,7 @@ It used to cost you a confused user. **Now it costs more: LLMs and coding agents
 | --- | --- | --- |
 | `missing-export` | Example imports a name your package doesn't export (verified against your real types) | error |
 | `bad-subpath` | Example imports `pkg/sub` that your `exports` map doesn't expose | error |
-| `syntax` | Code blocks that don't parse (JS/TS/JSX/TSX) | error |
+| `syntax` | Code blocks that don't parse (JS/TS/JSX/TSX, and Python when an interpreter is available) | error |
 | `data` | JSON/YAML blocks that don't parse | error |
 | `broken-link` / `missing-image` | Relative links/images pointing at files that don't exist | error |
 | `missing-anchor` | `#fragments` that match no heading (GitHub slug rules) | warning |
@@ -48,7 +48,8 @@ False positives kill linters. docrot is engineered to stay quiet about intention
 - **Partial examples** — blocks with `...`, `…`, `<YOUR_KEY>`, `{{ templates }}` are skipped, not failed.
 - **Fragments** — API-reference notation (`axios.get(url: string): Promise`), bare config objects, class members and function types all parse in their documented shape.
 - **Console output** — stack traces and error output fenced as code are recognized and skipped.
-- **Changelogs** — historical documents legitimately reference old APIs; excluded by default.
+- **Changelogs and test trees** — historical documents legitimately reference old APIs, and test fixtures are deliberately rotten; both excluded by default.
+- **Docs-site conventions** — mkdocs include directives, JSON Lines fences, i18n trees that fall back to the default language, doctest sessions and IPython magics in Python blocks.
 - **Docs-site routes** — `/guide/config` style links and extensionless routes resolve like your static site generator would.
 
 If docrot says it's broken, it's broken.
@@ -181,7 +182,7 @@ docrot resolves your package's real entry point (exports map → types → sourc
 
 ## Roadmap
 
-- Python / Go / Rust example verification
+- Go / Rust / shell example verification
 - `--fix` for the long tail: AI-assisted rewrites (bring your own key)
 - Execution mode: actually run examples in a sandbox
 - `llms.txt` verification — keep your AI-facing docs honest too
