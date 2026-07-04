@@ -6,7 +6,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURE = path.join(ROOT, 'test/fixtures/proj');
-const TSX = path.join(ROOT, 'node_modules/.bin/tsx');
+// Spawn node with tsx's real JS entry: the .bin/ shims are shell scripts
+// (.cmd on Windows), which child_process cannot exec without a shell.
+const TSX_CLI = path.join(ROOT, 'node_modules/tsx/dist/cli.mjs');
 
 let proc: ChildProcessWithoutNullStreams;
 const pending = new Map<number, (msg: any) => void>();
@@ -27,7 +29,7 @@ function request(id: number, method: string, params: object): Promise<any> {
 }
 
 beforeAll(async () => {
-  proc = spawn(TSX, ['src/mcp.ts'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
+  proc = spawn(process.execPath, [TSX_CLI, 'src/mcp.ts'], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
   const rl = readline.createInterface({ input: proc.stdout });
   rl.on('line', (line) => {
     try {
