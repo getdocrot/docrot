@@ -92,12 +92,16 @@ export async function applyFixes(
 
   for (const [rel, fixFindings] of perFile) {
     const abs = path.join(result.root, rel);
-    let content: string;
+    let raw: string;
     try {
-      content = fs.readFileSync(abs, 'utf8');
+      raw = fs.readFileSync(abs, 'utf8');
     } catch {
       continue;
     }
+    // Work in LF (scan findings and block values are LF); remember the
+    // file's own flavor so --fix never rewrites a user's line endings.
+    const hadCrlf = raw.includes('\r\n');
+    const content = raw.replace(/\r\n?/g, '\n');
     const lines = content.split('\n');
     let touched = false;
     const doneBlocks = new Set<string>();
@@ -149,8 +153,9 @@ export async function applyFixes(
     }
 
     if (touched && !options.dryRun) {
-      originals.set(abs, content);
-      fs.writeFileSync(abs, lines.join('\n'));
+      originals.set(abs, raw);
+      const joined = lines.join('\n');
+      fs.writeFileSync(abs, hadCrlf ? joined.replace(/\n/g, '\r\n') : joined);
       fixedFiles.push(rel);
     }
   }

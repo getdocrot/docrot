@@ -23,7 +23,9 @@ export async function scan(rootInput: string, options: ScanOptions = {}): Promis
     } catch {
       continue;
     }
-    docs.push(parseDoc(abs, rel, content));
+    // Windows checkouts hand us CRLF; every check reasons in LF. Line counts
+    // are unchanged, so reported line numbers still match the file on disk.
+    docs.push(parseDoc(abs, rel, content.replace(/\r\n?/g, '\n')));
   }
 
   const findings: Finding[] = runChecks(project, docs, options);
