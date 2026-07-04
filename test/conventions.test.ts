@@ -127,3 +127,35 @@ describe('package refs in scaffold context', () => {
     expect(result.findings.filter((f) => f.check === 'missing-script')).toHaveLength(0);
   });
 });
+
+describe('lint-rule documentation conventions', () => {
+  const lintFindings = () => result.findings.filter((f) => f.file.startsWith('lint-'));
+
+  it('reports no hard errors for deliberate rule-doc examples', () => {
+    expect(lintFindings().filter((f) => f.severity === 'error')).toHaveLength(0);
+  });
+
+  it('downgrades sloppy-mode-only syntax (octal literals, legacy escapes) to warnings', () => {
+    const w = lintFindings().filter(
+      (f) => f.severity === 'warning' && f.check === 'syntax' && f.message.includes('sloppy'),
+    );
+    expect(w).toHaveLength(3);
+  });
+
+  it('skips REPL transcripts', () => {
+    const block = result.files
+      .flatMap((f) => f.blocks)
+      .find((b) => b.value.includes('> console.log(foo);'));
+    expect(block?.skipped).toBe('REPL transcript');
+  });
+
+  it('skips examples that mark their own SyntaxError', () => {
+    const block = result.files.flatMap((f) => f.blocks).find((b) => b.value.includes('// SyntaxError'));
+    expect(block?.skipped).toBe('demonstrates invalid code');
+  });
+
+  it('skips whitespace-visualization glyph examples', () => {
+    const block = result.files.flatMap((f) => f.blocks).find((b) => b.value.includes('⏎'));
+    expect(block?.skipped).toBe('whitespace-visualization glyphs');
+  });
+});

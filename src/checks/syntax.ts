@@ -13,6 +13,15 @@ export const SNIPPET_FRIENDLY_CODES = new Set([
   1432, // top-level 'for await' target config
 ]);
 
+// Annex-B / sloppy-mode-only grammar: legal when an example runs as a classic
+// script (eslint's own rule docs mark these `sourceType: "script"`), rejected
+// by the module parser. Deprecated style on display, not rot.
+export const SLOPPY_ONLY_CODES = new Set([
+  1121, // octal literal (071)
+  1487, // octal escape sequence in a string
+  1488, // escape sequence '\8' / '\9'
+]);
+
 function blockIdOf(block: CodeBlock): string {
   return `${block.file}:${block.fenceLine}`;
 }
@@ -31,8 +40,14 @@ export function docFragmentGate(block: CodeBlock, code: string): string | null {
   }
   // Tokenizer/linter docs demonstrate invalid input and say so in the code.
   // Narrower than the prose guard: identifiers named `broken`/`bad` are
-  // everywhere, but nobody writes the word "invalid" in working examples.
-  if (/\b(invalid|incorrect)\b/i.test(code)) return 'demonstrates invalid code';
+  // everywhere, but nobody writes the word "invalid" — or names the
+  // SyntaxError a line will raise — in working examples.
+  if (/\b(invalid|incorrect|syntax\s*error)\b/i.test(code)) return 'demonstrates invalid code';
+  // REPL transcripts: `> console.log(foo)` — a session capture, not a program.
+  if (/^>\s/m.test(code)) return 'REPL transcript';
+  // Whitespace-rule docs draw the invisible: ⏎ ␊ ␍ ␤ ␣ mark line breaks and
+  // spaces for the reader; no working code contains these glyphs.
+  if (/[⏎␊␍␤␣]/.test(code)) return 'whitespace-visualization glyphs';
   // mkdocs/markdown-include snippet directives: `{!> ../../docs_src/x.py !}`
   if (/\{!.*!\}/.test(code)) return 'docs-include directive';
   // Directory-tree diagrams get fenced as code often enough to matter.
@@ -530,6 +545,28 @@ export function checkBlockSyntax(block: CodeBlock): Finding[] {
         block.skipped = 'diff notation';
         return findings;
       }
+    }
+
+    // Sloppy-mode-only grammar (octal literals, legacy escapes): the example
+    // runs as a classic script; only the module/strict parser rejects it.
+    // Deprecated style on display — warn, never error.
+    if (diags.every((d) => SLOPPY_ONLY_CODES.has(d.code))) {
+      const first = diags[0];
+      let line = 0;
+      if (first.file && typeof first.start === 'number') {
+        line = first.file.getLineAndCharacterOfPosition(first.start).line;
+      }
+      findings.push({
+        file: block.file,
+        line: block.contentStartLine + line,
+        severity: 'warning',
+        check: 'syntax',
+        message:
+          'example relies on sloppy-mode-only syntax (octal literal or legacy escape) — valid in classic scripts, rejected in modules and strict mode',
+        snippet: block.value.split('\n')[line]?.trim(),
+        blockId: blockIdOf(block),
+      });
+      return findings;
     }
 
     // TypeScript syntax inside a ```js block: broken for anyone pasting into
